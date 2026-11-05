@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GameStateManager } from './state/GameStateManager';
-import { CanvasViewport } from './components/CanvasViewport';
+import { MeadowBattlefield } from './components/MeadowBattlefield';
 import { BottomDock, TabKey } from './components/navigation/BottomDock';
 import { BattleTab } from './components/drawers/BattleTab';
 import { SquadBuddyTab } from './components/drawers/SquadBuddyTab';
@@ -12,11 +12,11 @@ export const App: React.FC = () => {
   const gameState = GameStateManager.getInstance();
   const [, setTick] = useState<number>(0);
 
-  // Bottom drawer state
+  // Bottom drawer state (collapsible to allow full-screen view of the roaming Meadow)
   const [activeTab, setActiveTab] = useState<TabKey>('battle');
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(true);
 
-  // Subscribe to reactive state updates
+  // Subscribe to real-time auto-combat & free roaming ticks
   useEffect(() => {
     const unsubscribe = gameState.subscribe(() => {
       setTick(t => t + 1);
@@ -26,7 +26,6 @@ export const App: React.FC = () => {
 
   const handleSelectTab = (tab: TabKey) => {
     if (activeTab === tab && isDrawerOpen) {
-      // Toggle drawer if same tab clicked
       setIsDrawerOpen(false);
     } else {
       setActiveTab(tab);
@@ -36,19 +35,19 @@ export const App: React.FC = () => {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans">
-      {/* Background 3D Continuous WebGL Viewport */}
+      {/* Central Interactive Roaming Meadow Battlefield (Tallgrass Inspired) */}
       <div className="absolute inset-0 z-0">
-        <CanvasViewport state={gameState} />
+        <MeadowBattlefield state={gameState} />
       </div>
 
-      {/* Responsive Overlay Drawer for Active Tab */}
+      {/* Responsive App Drawer Overlay */}
       <div
         className={`fixed left-0 right-0 bottom-16 z-40 transition-all duration-300 ease-out pointer-events-none ${
           isDrawerOpen ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 pointer-events-none'
         }`}
       >
         <div className="max-w-4xl mx-auto px-3">
-          <div className="pointer-events-auto bg-slate-950/90 backdrop-blur-2xl rounded-2xl border border-slate-800/80 shadow-2xl max-h-[52vh] sm:max-h-[58vh] overflow-y-auto p-4 custom-scrollbar">
+          <div className="pointer-events-auto bg-slate-950/92 backdrop-blur-2xl rounded-2xl border border-slate-800/80 shadow-2xl max-h-[50vh] sm:max-h-[54vh] overflow-y-auto p-4 custom-scrollbar">
             {activeTab === 'battle' && <BattleTab state={gameState} />}
             {activeTab === 'squad' && <SquadBuddyTab state={gameState} />}
             {activeTab === 'world' && <WorldTab state={gameState} />}

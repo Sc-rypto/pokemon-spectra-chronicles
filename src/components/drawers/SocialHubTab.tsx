@@ -1,258 +1,272 @@
 import React, { useState } from 'react';
 import { GameStateManager } from '../../state/GameStateManager';
-import { Users, Shuffle, Globe, Trophy, Swords, Sparkles, ArrowRight } from 'lucide-react';
-import { createPokemonInstanceByDex, ALL_POKEMON_ENTRIES } from '../../data/pokemonCatalog';
+import { Globe, Swords, ArrowRightLeft, ShieldAlert, Sparkles, Tag, X } from 'lucide-react';
 
 interface SocialHubTabProps {
   state: GameStateManager;
 }
 
 export const SocialHubTab: React.FC<SocialHubTabProps> = ({ state }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'gts' | 'wonder_rift' | 'raid' | 'leaderboards'>('gts');
-  const [wonderTradeStatus, setWonderTradeStatus] = useState<string | null>(null);
+  const [activeSubTab, setActiveSubTab] = useState<'raid' | 'market' | 'box_sell'>('raid');
+  const [listingPrice, setListingPrice] = useState<number>(500);
+  const [listingCurrency, setListingCurrency] = useState<'dollars' | 'shards'>('dollars');
+  const [selectedBoxIdx, setSelectedBoxIdx] = useState<number>(0);
 
-  // Trigger Wonder Trade Rift
-  const handleWonderTrade = () => {
-    if (state.pcBox.length === 0) {
-      setWonderTradeStatus('You need at least 1 Pokémon in your PC Box to offer into the Rift!');
-      return;
-    }
-
-    setWonderTradeStatus('Transmitting Pokémon through the Wonder Rift Dimensional Void...');
-    setTimeout(() => {
-      // Pick random incoming species from all 1025 Pokémon
-      const randomDex = 1 + Math.floor(Math.random() * ALL_POKEMON_ENTRIES.length);
-      const incoming = createPokemonInstanceByDex(randomDex, 50 + Math.floor(Math.random() * 40));
-      state.pcBox.push(incoming);
-      setWonderTradeStatus(`Rift Trade Complete! Received a Lv. ${incoming.level} ${incoming.speciesName} (${incoming.prismaticTier})!`);
-      state.sync3DScene();
-    }, 1400);
-  };
+  const raid = state.activeRaid;
+  const raidHpPercent = Math.max(0, (raid.currentHp / raid.maxHp) * 100);
 
   return (
     <div className="tab-pane-content space-y-4">
-      {/* Sub-tab selection */}
+      {/* Navigation Sub-Tabs */}
       <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
         <button
-          onClick={() => setActiveSubTab('gts')}
-          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-            activeSubTab === 'gts' ? 'bg-indigo-600 text-white shadow' : 'bg-slate-800 text-slate-400'
-          }`}
-        >
-          <Globe size={14} /> GTS & Auction House
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('wonder_rift')}
-          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-            activeSubTab === 'wonder_rift' ? 'bg-purple-600 text-white shadow' : 'bg-slate-800 text-slate-400'
-          }`}
-        >
-          <Shuffle size={14} /> Wonder Trade Rift
-        </button>
-
-        <button
           onClick={() => setActiveSubTab('raid')}
-          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-            activeSubTab === 'raid' ? 'bg-rose-600 text-white shadow' : 'bg-slate-800 text-slate-400'
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+            activeSubTab === 'raid' ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white shadow-lg' : 'bg-slate-800 text-slate-400'
           }`}
         >
-          <Swords size={14} /> 4-Player Co-Op Raid
+          <Swords size={15} /> Playable Overworld Raid Boss
         </button>
 
         <button
-          onClick={() => setActiveSubTab('leaderboards')}
-          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-            activeSubTab === 'leaderboards' ? 'bg-amber-600 text-white shadow' : 'bg-slate-800 text-slate-400'
+          onClick={() => setActiveSubTab('market')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+            activeSubTab === 'market' ? 'bg-indigo-600 text-white shadow' : 'bg-slate-800 text-slate-400'
           }`}
         >
-          <Trophy size={14} /> Global Leaderboard
+          <Globe size={15} /> Player Market ({state.marketListings.length})
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('box_sell')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+            activeSubTab === 'box_sell' ? 'bg-emerald-600 text-white shadow' : 'bg-slate-800 text-slate-400'
+          }`}
+        >
+          <Tag size={15} /> Sell from PC Box
         </button>
       </div>
 
-      {/* 1. Global Trade Station (GTS) */}
-      {activeSubTab === 'gts' && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-xs text-slate-400">
-            <span>Live Network Listings (Synchronized via P2P Distributed Ledgers)</span>
-            <span>Total Available: {state.gtsListings.length}</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {state.gtsListings.map(item => (
-              <div
-                key={item.id}
-                className="bg-slate-900/80 p-3 rounded-xl border border-slate-800 flex items-center justify-between hover:border-slate-700"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow"
-                    style={{ backgroundColor: item.pokemon.primaryColor }}
-                  >
-                    {item.pokemon.speciesName[0]}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-xs text-white">{item.pokemon.speciesName}</span>
-                      <span className="text-[10px] font-mono text-cyan-400">Lv. {item.pokemon.level}</span>
-                    </div>
-                    <div className="text-[10px] text-slate-400">
-                      Tier: <span className="text-amber-400 font-semibold">{item.pokemon.prismaticTier}</span> • Seller: {item.sellerName}
-                    </div>
-                  </div>
+      {/* 1. 100% PLAYABLE OVERWORLD RAID BOSS */}
+      {activeSubTab === 'raid' && (
+        <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 space-y-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-slate-800">
+            <div className="flex items-center gap-4">
+              <img
+                src={raid.spriteUrl}
+                alt={raid.name}
+                className="w-24 h-24 object-contain filter drop-shadow-[0_0_15px_#f59e0b] animate-pulse"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = raid.artworkUrl;
+                }}
+              />
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase font-extrabold px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    {raid.tier}
+                  </span>
+                  <h3 className="font-extrabold text-white text-lg">{raid.name}</h3>
                 </div>
-
-                <div className="text-right">
-                  <div className="text-xs font-mono font-bold text-white mb-1">
-                    {item.currency === 'dollars' ? `₽${item.price.toLocaleString()}` : `${item.price} 💎`}
-                  </div>
-                  <button
-                    onClick={() => {
-                      state.pcBox.push(item.pokemon);
-                      state.gtsListings = state.gtsListings.filter(l => l.id !== item.id);
-                      state.addLog(`Purchased ${item.pokemon.speciesName} from GTS!`, 'catch');
-                      state.sync3DScene();
-                    }}
-                    className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] font-semibold shadow"
-                  >
-                    Buy Listing
-                  </button>
+                <div className="text-xs text-slate-400 mt-1">
+                  Element: <span className="text-purple-400 font-bold">{raid.element}</span> • Level: <span className="text-amber-400 font-bold">{raid.level}</span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  Your Total Damage Dealt: <span className="text-emerald-400 font-mono font-bold">{raid.totalDamageDealt.toLocaleString()} DMG</span>
                 </div>
               </div>
-            ))}
+            </div>
+
+            {/* Attack Raid Boss Button */}
+            <button
+              onClick={() => state.strikeRaidBoss()}
+              className="px-6 py-3 bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-xl shadow-red-950/50 transition-all transform active:scale-95 flex items-center gap-2"
+            >
+              <Swords size={18} /> Strike Raid Boss!
+            </button>
+          </div>
+
+          {/* Real-time Boss HP Bar */}
+          <div>
+            <div className="flex items-center justify-between text-xs font-mono mb-1.5">
+              <span className="text-slate-400 font-bold">Raid Boss Global Health</span>
+              <span className="text-rose-400 font-bold">
+                {raid.currentHp.toLocaleString()} / {raid.maxHp.toLocaleString()} ({raidHpPercent.toFixed(1)}%)
+              </span>
+            </div>
+            <div className="w-full bg-slate-950 rounded-full h-4 overflow-hidden border border-slate-700 shadow-inner">
+              <div
+                className="bg-gradient-to-r from-rose-600 via-amber-500 to-yellow-400 h-full rounded-full transition-all duration-200"
+                style={{ width: `${raidHpPercent}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-xs text-slate-400">
+            💡 <strong className="text-white">Live Economy Rewards:</strong> Every hit against the Raid Boss pays out instant Poké-Dollars & Prismatic Shards directly to your wallet! Defeating the boss awards a massive +5,000 Shards jackpot.
           </div>
         </div>
       )}
 
-      {/* 2. Wonder Trade Rift */}
-      {activeSubTab === 'wonder_rift' && (
-        <div className="bg-slate-900/80 p-6 rounded-xl border border-slate-800 text-center space-y-4">
-          <div className="w-16 h-16 mx-auto rounded-full bg-purple-600/20 border border-purple-500/40 flex items-center justify-center text-3xl animate-pulse">
-            🌀
+      {/* 2. REAL PLAYER-ONLY MARKETPLACE (ZERO FAKE BOTS) */}
+      {activeSubTab === 'market' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span>Verified Player Listings (All items listed by real trainers)</span>
+            <span>Total Active: {state.marketListings.length}</span>
           </div>
 
-          <div>
-            <h3 className="font-bold text-lg text-white">Wonder Trade Rift Portal</h3>
-            <p className="text-xs text-slate-400 max-w-md mx-auto mt-1">
-              Cast a Pokémon into the inter-dimensional rift to instantly receive an asynchronous mystery Pokémon from other trainers across regions!
-            </p>
-          </div>
+          {state.marketListings.length === 0 ? (
+            <div className="p-8 text-center bg-slate-900/60 rounded-2xl border border-slate-800">
+              <div className="text-3xl mb-2">🏪</div>
+              <h4 className="font-bold text-white text-sm">No Active Player Listings</h4>
+              <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                No fake bots are allowed! List duplicate Pokémon from your PC Box under "Sell from PC Box" to trade with other trainers.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {state.marketListings.map(listing => (
+                <div
+                  key={listing.id}
+                  className="bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={listing.pokemon.spriteUrl}
+                      alt={listing.pokemon.speciesName}
+                      className="w-14 h-14 object-contain"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = listing.pokemon.artworkUrl;
+                      }}
+                    />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-sm">{listing.pokemon.speciesName}</span>
+                        <span className="text-[10px] text-cyan-400 font-mono">Lv.{listing.pokemon.level}</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Seller: <span className="text-slate-300 font-semibold">{listing.sellerTrainerName}</span>
+                      </div>
+                    </div>
+                  </div>
 
-          <button
-            onClick={handleWonderTrade}
-            className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition-all"
-          >
-            Offer Mystery Trade
-          </button>
-
-          {wonderTradeStatus && (
-            <div className="text-xs font-mono text-purple-300 bg-purple-950/40 p-3 rounded-lg border border-purple-800/40 max-w-md mx-auto">
-              {wonderTradeStatus}
+                  <div className="text-right">
+                    <div className="font-mono font-bold text-xs text-emerald-400 mb-1">
+                      {listing.currency === 'dollars' ? `₽${listing.price.toLocaleString()}` : `${listing.price} 💎`}
+                    </div>
+                    {listing.isPlayerListing ? (
+                      <button
+                        onClick={() => state.cancelMarketListing(listing.id)}
+                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-rose-300 rounded text-[11px] font-semibold border border-rose-900/50"
+                      >
+                        Cancel Listing
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (listing.currency === 'dollars' && state.pokeDollars >= listing.price) {
+                            state.pokeDollars -= listing.price;
+                            state.pcBox.push(listing.pokemon);
+                            state.marketListings = state.marketListings.filter(l => l.id !== listing.id);
+                            state.addLog(`Purchased ${listing.pokemon.speciesName} for ₽${listing.price.toLocaleString()}!`, 'catch');
+                          }
+                        }}
+                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold shadow"
+                      >
+                        Buy
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
       )}
 
-      {/* 3. 4-Player Co-Op Overworld Raid */}
-      {activeSubTab === 'raid' && (
-        <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800 space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs px-2 py-0.5 rounded font-bold bg-rose-600 text-white">
-                  {state.activeRaid.tier} RAID
-                </span>
-                <h3 className="font-bold text-white text-base">{state.activeRaid.name}</h3>
-                <span className="text-xs font-mono text-amber-400 font-bold">Lv. {state.activeRaid.level}</span>
-              </div>
-              <div className="text-xs text-slate-400 mt-1">
-                Shared Global Boss Health • Remaining Time: {state.activeRaid.timeRemainingSeconds}s
-              </div>
-            </div>
-
-            <button
-              onClick={() => {
-                const dmg = 8500 + Math.floor(Math.random() * 5000);
-                state.activeRaid.currentHp = Math.max(0, state.activeRaid.currentHp - dmg);
-                const playerEntry = state.activeRaid.participants.find(p => p.id === 'p4');
-                if (playerEntry) playerEntry.damageDealt += dmg;
-                state.prismaticShards += 25;
-                state.addLog(`⚔️ Dealt ${dmg.toLocaleString()} Raid damage to ${state.activeRaid.name}!`, 'damage');
-                state.sync3DScene();
-              }}
-              className="px-4 py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 text-white font-bold text-xs rounded-lg shadow-lg shadow-red-950/40"
-            >
-              Strike Boss (Co-Op)
-            </button>
-          </div>
-
-          {/* Boss HP Bar */}
+      {/* 3. SELL REAL POKEMON FROM PC BOX */}
+      {activeSubTab === 'box_sell' && (
+        <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-800 space-y-4">
           <div>
-            <div className="flex items-center justify-between text-xs font-mono mb-1">
-              <span className="text-slate-400">Boss Health</span>
-              <span className="text-rose-400 font-bold">
-                {state.activeRaid.currentHp.toLocaleString()} / {state.activeRaid.maxHp.toLocaleString()}
-              </span>
-            </div>
-            <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
-              <div
-                className="bg-gradient-to-r from-rose-600 to-amber-500 h-full rounded-full transition-all duration-300"
-                style={{ width: `${(state.activeRaid.currentHp / state.activeRaid.maxHp) * 100}%` }}
-              />
-            </div>
+            <h4 className="font-bold text-white text-sm">Sell Pokémon from your PC Box to the Economy</h4>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Choose a Pokémon from your PC Box to list on the Global Market for other trainers to purchase.
+            </p>
           </div>
 
-          {/* 4 Raid Party Members */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {state.activeRaid.participants.map(p => (
-              <div key={p.id} className="p-2.5 bg-slate-800/60 rounded-lg border border-slate-700/60 flex items-center gap-2">
-                <span className="text-xl">{p.avatarUrl}</span>
-                <div className="truncate">
-                  <div className="font-bold text-xs text-white truncate">{p.name}</div>
-                  <div className="text-[10px] text-slate-400 font-mono">
-                    {p.damageDealt.toLocaleString()} DMG
-                  </div>
-                </div>
+          {state.pcBox.length === 0 ? (
+            <div className="p-6 text-center text-xs text-slate-500 bg-slate-950/50 rounded-xl">
+              Your PC Box is empty. Catch wild Pokémon in the Meadow to list them here!
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* PC Box Grid Picker */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2 max-h-48 overflow-y-auto p-1 custom-scrollbar">
+                {state.pcBox.map((p, idx) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setSelectedBoxIdx(idx)}
+                    className={`p-2 rounded-xl border text-center transition-all ${
+                      selectedBoxIdx === idx
+                        ? 'bg-indigo-600/30 border-indigo-500 ring-2 ring-indigo-500/40 text-white'
+                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <img
+                      src={p.spriteUrl}
+                      alt={p.speciesName}
+                      className="w-12 h-12 mx-auto object-contain"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = p.artworkUrl;
+                      }}
+                    />
+                    <div className="font-bold text-[11px] truncate">{p.speciesName}</div>
+                    <div className="text-[10px] text-cyan-400 font-mono">Lv.{p.level}</div>
+                  </button>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* 4. Global Leaderboards */}
-      {activeSubTab === 'leaderboards' && (
-        <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-800 space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <h4 className="font-bold text-sm text-white flex items-center gap-2">
-              <Trophy size={16} className="text-amber-400" />
-              Global Prismatic Collection Standings
-            </h4>
-            <span className="text-xs text-slate-400 font-mono">Top 5 Trainers</span>
-          </div>
-
-          <div className="space-y-2 text-xs">
-            {[
-              { rank: 1, name: 'Ash_Ketchum_Prime', region: 'Kanto', score: '92 Supernovas', medal: '🥇' },
-              { rank: 2, name: 'Cynthia_Sinnoh', region: 'Sinnoh', score: '78 Supernovas', medal: '🥈' },
-              { rank: 3, name: 'Steven_Devon', region: 'Hoenn', score: '64 Supernovas', medal: '🥉' },
-              { rank: 4, name: 'You (Player)', region: 'Paldea Continuum', score: `${state.prismaticLog.length + 5} Prismatic Variants`, medal: '🎖️' },
-              { rank: 5, name: 'Leon_Galar', region: 'Galar', score: '51 Supernovas', medal: '⭐' },
-            ].map(row => (
-              <div
-                key={row.rank}
-                className="p-2.5 bg-slate-800/60 rounded-lg flex items-center justify-between border border-slate-700/40"
-              >
+              {/* Price & Currency Config */}
+              <div className="p-3 bg-slate-950/70 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <span className="text-base">{row.medal}</span>
                   <div>
-                    <span className="font-bold text-white block">{row.name}</span>
-                    <span className="text-[10px] text-slate-400">{row.region}</span>
+                    <label className="text-[10px] text-slate-400 block mb-1">Set Price:</label>
+                    <input
+                      type="number"
+                      min={100}
+                      max={1000000}
+                      value={listingPrice}
+                      onChange={(e) => setListingPrice(Math.max(10, parseInt(e.target.value) || 100))}
+                      className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono w-28"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1">Currency:</label>
+                    <select
+                      value={listingCurrency}
+                      onChange={(e) => setListingCurrency(e.target.value as any)}
+                      className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                    >
+                      <option value="dollars">Poké-Dollars (₽)</option>
+                      <option value="shards">Prismatic Shards (💎)</option>
+                    </select>
                   </div>
                 </div>
-                <span className="font-mono font-bold text-amber-400">{row.score}</span>
+
+                <button
+                  onClick={() => {
+                    state.listPokemonOnMarket(selectedBoxIdx, listingPrice, listingCurrency);
+                    setSelectedBoxIdx(0);
+                    setActiveSubTab('market');
+                  }}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg transition-all"
+                >
+                  Create Listing
+                </button>
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>
