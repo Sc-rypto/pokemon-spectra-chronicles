@@ -1,6 +1,6 @@
 import {
   PokemonData,
-  ActiveCombatant,
+  Active1v1Combatant,
   AutoCatchSettings,
   BuddyData,
   PrismaticTier,
@@ -14,8 +14,8 @@ import {
   createPokemonInstanceByDex,
   calculatePokemonStats,
   getPokemonSpriteUrls,
+  ASSET_ICONS,
 } from '../data/pokemonCatalog';
-import { pokeApiService } from '../services/PokeApiService';
 
 export interface CombatLogEntry {
   id: string;
@@ -27,11 +27,11 @@ export interface CombatLogEntry {
 export class GameStateManager {
   private static instance: GameStateManager;
 
-  // Real Economy: Player Earned Wallet
-  public pokeDollars: number = 2500;
-  public prismaticShards: number = 150;
+  // Real Economy Wallet
+  public pokeDollars: number = 3200;
+  public prismaticShards: number = 220;
 
-  // Regions & Level Caps
+  // Regions & Gym Badges
   public currentRegionIndex: number = 0; // 0 to 8
   public maxUnlockedRegionIndex: number = 0;
 
@@ -44,9 +44,12 @@ export class GameStateManager {
     timestamp: number;
   }[] = [];
 
-  // Squad (Active 5) & Buddy
+  // Squad (5 Slots) & Active Battler Index (Tallgrass 1v1 Format)
   public squad: PokemonData[] = [];
+  public activeBattlerSlot: number = 0; // The single active Pokémon currently on the battlefield
   public pcBox: PokemonData[] = [];
+  
+  // Walking Buddy
   public buddy: PokemonData | null = null;
   public buddyData: BuddyData = {
     pokemonId: '',
@@ -69,17 +72,17 @@ export class GameStateManager {
     preferredBall: 'poke',
   };
 
-  // Real Inventory (Economy Driven: Purchased or Looted)
+  // Real Inventory (Using sprite asset icons, zero emojis)
   public inventory: InventoryItem[] = [
-    { id: 'b1', name: 'Poké Ball', category: 'balls', count: 25, price: 200, description: 'Standard capture device for wild encounters.', icon: '🔴' },
-    { id: 'b2', name: 'Great Ball', category: 'balls', count: 5, price: 600, description: 'Higher capture rate ball.', icon: '🔵' },
-    { id: 'b3', name: 'Ultra Ball', category: 'balls', count: 0, price: 1200, description: 'High-performance capture ball.', icon: '🟡' },
-    { id: 'b4', name: 'Prismatic Sphere', category: 'balls', count: 1, price: 5000, shardPrice: 150, description: 'Guarantees catch on any encounter.', icon: '💎' },
-    { id: 'p1', name: 'Super Potion', category: 'potions', count: 10, price: 700, description: 'Restores 100 HP to all squad members.', icon: '🧪' },
-    { id: 's1', name: 'Supernova Shader Aura', category: 'shaders', count: 0, price: 0, shardPrice: 1000, description: 'Unlocks Cosmic flame aura cosmetics.', icon: '✨' },
+    { id: 'b1', name: 'Poké Ball', category: 'balls', count: 35, price: 200, description: 'Standard capture device for wild encounters.', icon: ASSET_ICONS.pokeBall },
+    { id: 'b2', name: 'Great Ball', category: 'balls', count: 10, price: 600, description: 'Higher capture rate ball with reinforced casing.', icon: ASSET_ICONS.greatBall },
+    { id: 'b3', name: 'Ultra Ball', category: 'balls', count: 4, price: 1200, description: 'High-performance capture ball.', icon: ASSET_ICONS.ultraBall },
+    { id: 'b4', name: 'Prismatic Sphere', category: 'balls', count: 1, price: 5000, shardPrice: 150, description: 'Guarantees catch on any encounter.', icon: ASSET_ICONS.masterBall },
+    { id: 'p1', name: 'Super Potion', category: 'potions', count: 12, price: 700, description: 'Restores 100 HP to your active battler.', icon: ASSET_ICONS.potion },
+    { id: 'm1', name: 'Prismatic Shard', category: 'materials', count: 15, price: 0, shardPrice: 0, description: 'Rare dimensional material.', icon: ASSET_ICONS.prismaticShard },
   ];
 
-  // Real User Market Listings (Zero fake bots)
+  // Real Player Marketplace (Zero bots)
   public marketListings: MarketListing[] = [];
 
   // Playable Overworld Raid Boss
@@ -95,20 +98,20 @@ export class GameStateManager {
     prismaticTier: 'Supernova',
     active: true,
     totalDamageDealt: 0,
-    spriteUrl: getPokemonSpriteUrls(150).sprite,
-    artworkUrl: getPokemonSpriteUrls(150).artwork,
+    spriteUrl: getPokemonSpriteUrls(150, 'Supernova').sprite,
+    artworkUrl: getPokemonSpriteUrls(150, 'Supernova').artwork,
   };
 
-  // Continuous Auto-Combat State
+  // 1v1 Meadow Combat State
   public isBattling: boolean = true;
   public waveNumber: number = 1;
-  public activeEnemies: ActiveCombatant[] = [];
-  public squadCombatants: ActiveCombatant[] = [];
+  public playerCombatant: Active1v1Combatant | null = null;
+  public wildCombatant: Active1v1Combatant | null = null;
   public combatLogs: CombatLogEntry[] = [];
 
-  // Active Battle Visual Attack Beams & Float Texts
-  public visualEffects: { id: string; fromX: number; fromY: number; toX: number; toY: number; color: string; life: number }[] = [];
+  // Floating Damage Numbers & Combat FX
   public floatingTexts: { id: string; text: string; color: string; x: number; y: number; opacity: number }[] = [];
+  public attackBeams: { id: string; fromX: number; fromY: number; toX: number; toY: number; color: string; life: number }[] = [];
 
   // Reactive listeners
   private subscribers: Array<() => void> = [];
@@ -137,130 +140,118 @@ export class GameStateManager {
     this.subscribers.forEach(cb => cb());
   }
 
-  // Authentic Starter Lineup like Tallgrass: Starter + Companions
   private initStarterSquad() {
-    // Kanto starters: Dex 6 Charizard, Dex 9 Blastoise, Dex 3 Venusaur, Dex 25 Pikachu, Dex 448 Lucario
-    const charizard = createPokemonInstanceByDex(6, 12);
-    const pikachu = createPokemonInstanceByDex(25, 10);
-    const blastoise = createPokemonInstanceByDex(9, 11);
-    const venusaur = createPokemonInstanceByDex(3, 10);
-    const lucario = createPokemonInstanceByDex(448, 12, 'Radiant');
+    // 5 squad slots (Player starts with Charizard, Pikachu, Blastoise, Venusaur, Lucario)
+    const charizard = createPokemonInstanceByDex(6, 15);
+    const pikachu = createPokemonInstanceByDex(25, 12);
+    const blastoise = createPokemonInstanceByDex(9, 14);
+    const venusaur = createPokemonInstanceByDex(3, 13);
+    const lucario = createPokemonInstanceByDex(448, 16, 'Radiant');
 
     this.squad = [charizard, pikachu, blastoise, venusaur, lucario];
     this.squad.forEach(p => this.pokedexCaught.add(p.dexNumber));
 
     // Walking buddy: Dex 778 Mimikyu (Shiny)
-    this.buddy = createPokemonInstanceByDex(778, 10, 'Shiny');
+    this.buddy = createPokemonInstanceByDex(778, 12, 'Shiny');
     this.buddyData.pokemonId = this.buddy.id;
     this.pokedexCaught.add(this.buddy.dexNumber);
 
     // Initial PC Box specimens
-    this.pcBox.push(createPokemonInstanceByDex(133, 8)); // Eevee
-    this.pcBox.push(createPokemonInstanceByDex(94, 15, 'Ethereal')); // Gengar
+    this.pcBox.push(createPokemonInstanceByDex(133, 10)); // Eevee
+    this.pcBox.push(createPokemonInstanceByDex(94, 18, 'Ethereal')); // Gengar
 
-    this.initCombatants();
+    this.init1v1Combatants();
   }
 
-  private initCombatants() {
-    // 5 squad slots positioned on the LEFT side of the meadow
-    const playerSlots = [
-      { x: 14, y: 22 },
-      { x: 26, y: 38 },
-      { x: 12, y: 55 },
-      { x: 24, y: 72 },
-      { x: 14, y: 85 },
-    ];
-
-    this.squadCombatants = this.squad.map((p, idx) => {
-      const slot = playerSlots[idx] || playerSlots[0];
-      return {
-        pokemon: p,
-        isPlayer: true,
-        positionSlot: idx,
-        currentHp: p.stats.hp,
-        maxHp: p.stats.maxHp,
-        x: slot.x,
-        y: slot.y,
-        targetX: slot.x,
-        targetY: slot.y,
-        facing: 'right',
-        wanderTimer: Math.random() * 2,
-        attackCooldowns: {},
-        lastAttackTimestamp: 0,
-        isFainted: false,
-        visualId: p.id,
-        lungeProgress: 0,
-        shakeTimer: 0,
-      };
-    });
-
-    this.spawnEnemyWave();
+  // Switch active 1v1 battle slot (like clicking in the team bar in Tallgrass)
+  public switchActiveBattler(slotIdx: number) {
+    if (slotIdx < 0 || slotIdx >= this.squad.length) return;
+    this.activeBattlerSlot = slotIdx;
+    const active = this.squad[slotIdx];
+    this.playerCombatant = {
+      pokemon: active,
+      isPlayer: true,
+      currentHp: active.stats.hp,
+      maxHp: active.stats.maxHp,
+      x: 22,
+      y: 62,
+      targetX: 22,
+      targetY: 62,
+      facing: 'right',
+      wanderTimer: 2.0,
+      lungeX: 0,
+      shakeX: 0,
+      attackCooldowns: {},
+      lastAttackTimestamp: 0,
+    };
+    this.addLog(`Switched out active battler: Go, ${active.speciesName}!`, 'level');
+    this.notify();
   }
 
-  /**
-   * Spawns 2 to 4 wild Pokémon on the RIGHT side of the meadow,
-   * roaming and engaging freely across screen!
-   */
-  public spawnEnemyWave(forceSupernova: boolean = false) {
+  private init1v1Combatants() {
+    const active = this.squad[this.activeBattlerSlot] || this.squad[0];
+    this.playerCombatant = {
+      pokemon: active,
+      isPlayer: true,
+      currentHp: active.stats.hp,
+      maxHp: active.stats.maxHp,
+      x: 22,
+      y: 62,
+      targetX: 22,
+      targetY: 62,
+      facing: 'right',
+      wanderTimer: 2.0,
+      lungeX: 0,
+      shakeX: 0,
+      attackCooldowns: {},
+      lastAttackTimestamp: 0,
+    };
+
+    this.spawnWildEncounter();
+  }
+
+  // Spawn single wild 1v1 opponent across the meadow
+  public spawnWildEncounter(forceSupernova: boolean = false) {
     const currentRegion = REGIONS_DATA[this.currentRegionIndex];
     const [minLvl, maxLvl] = currentRegion.levelRange;
-    const waveLevel = Math.min(
+    const wildLevel = Math.min(
       maxLvl,
-      Math.floor(minLvl + (this.waveNumber % 20) * ((maxLvl - minLvl) / 20) + Math.random() * 3)
+      Math.floor(minLvl + (this.waveNumber % 25) * ((maxLvl - minLvl) / 25) + Math.random() * 4)
     );
 
     const [dexMin, dexMax] = currentRegion.dexRange;
-    const enemyCount = 2 + Math.floor(Math.random() * 2); // 2 to 3 enemies per wave
-    this.activeEnemies = [];
+    const randomDex = dexMin + Math.floor(Math.random() * (dexMax - dexMin + 1));
+    const tier: PrismaticTier = forceSupernova ? 'Supernova' : undefined as any;
 
-    const enemySlots = [
-      { x: 80, y: 25 },
-      { x: 68, y: 48 },
-      { x: 82, y: 70 },
-      { x: 70, y: 85 },
-    ];
+    const wildPokemon = createPokemonInstanceByDex(
+      randomDex,
+      wildLevel,
+      tier,
+      this.buddyData.passiveTree.prismaticResonanceTier
+    );
 
-    for (let i = 0; i < enemyCount; i++) {
-      const randomDex = dexMin + Math.floor(Math.random() * (dexMax - dexMin + 1));
-      const tier: PrismaticTier = (i === 0 && forceSupernova)
-        ? 'Supernova'
-        : undefined as any;
+    this.wildCombatant = {
+      pokemon: wildPokemon,
+      isPlayer: false,
+      currentHp: wildPokemon.stats.hp,
+      maxHp: wildPokemon.stats.maxHp,
+      x: 75,
+      y: 42,
+      targetX: 75,
+      targetY: 42,
+      facing: 'left',
+      wanderTimer: 2.5,
+      lungeX: 0,
+      shakeX: 0,
+      attackCooldowns: {},
+      lastAttackTimestamp: 0,
+    };
 
-      const enemyPkmn = createPokemonInstanceByDex(
-        randomDex,
-        waveLevel,
-        tier,
-        this.buddyData.passiveTree.prismaticResonanceTier
+    if (wildPokemon.prismaticTier !== 'Standard') {
+      this.addLog(
+        `⚡ A rare wild ${wildPokemon.prismaticTier} ${wildPokemon.speciesName} (Lv. ${wildPokemon.level}) appeared in the Meadow!`,
+        'prismatic'
       );
-
-      const slot = enemySlots[i] || enemySlots[0];
-
-      this.activeEnemies.push({
-        pokemon: enemyPkmn,
-        isPlayer: false,
-        positionSlot: i,
-        currentHp: enemyPkmn.stats.hp,
-        maxHp: enemyPkmn.stats.maxHp,
-        x: slot.x,
-        y: slot.y,
-        targetX: slot.x,
-        targetY: slot.y,
-        facing: 'left',
-        wanderTimer: Math.random() * 2,
-        attackCooldowns: {},
-        lastAttackTimestamp: 0,
-        isFainted: false,
-        visualId: `enemy_${this.waveNumber}_${i}_${Date.now()}`,
-        lungeProgress: 0,
-        shakeTimer: 0,
-      });
-
-      if (enemyPkmn.prismaticTier !== 'Standard') {
-        this.addLog(
-          `⚡ A wild ${enemyPkmn.prismaticTier} ${enemyPkmn.speciesName} (Dex #${enemyPkmn.dexNumber}, Lv. ${enemyPkmn.level}) appeared in the Meadow!`,
-          'prismatic'
-        );
-      }
     }
 
     this.notify();
@@ -268,162 +259,135 @@ export class GameStateManager {
 
   private startCombatLoop() {
     this.combatTimer = window.setInterval(() => {
-      this.processCombatTick(0.1);
+      this.process1v1Tick(0.1);
     }, 100);
   }
 
-  private processCombatTick(delta: number) {
+  private process1v1Tick(delta: number) {
     const now = Date.now();
 
-    // 1. UPDATE FREE-ROAMING MEADOW MOVEMENT FOR ALL COMBATANTS
-    const updateUnitMovement = (c: ActiveCombatant, minX: number, maxX: number) => {
-      if (c.isFainted) return;
-
-      // Decrement timers
-      if (c.lungeProgress > 0) {
-        c.lungeProgress = Math.max(0, c.lungeProgress - delta * 3.0);
+    // 1. UPDATE MEADOW ROAMING & SHAKE / LUNGE TIMERS
+    const updateUnitMotion = (c: Active1v1Combatant, minX: number, maxX: number) => {
+      if (c.lungeX !== 0) {
+        c.lungeX *= 0.75;
+        if (Math.abs(c.lungeX) < 0.2) c.lungeX = 0;
       }
-      if (c.shakeTimer > 0) {
-        c.shakeTimer = Math.max(0, c.shakeTimer - delta * 3.0);
+      if (c.shakeX !== 0) {
+        c.shakeX *= -0.7;
+        if (Math.abs(c.shakeX) < 0.2) c.shakeX = 0;
       }
 
       c.wanderTimer -= delta;
       if (c.wanderTimer <= 0) {
-        c.wanderTimer = 1.8 + Math.random() * 3.0;
-        // Wander freely within their designated zone
+        c.wanderTimer = 2.0 + Math.random() * 3.0;
         c.targetX = minX + Math.random() * (maxX - minX);
-        c.targetY = 18 + Math.random() * 68;
-        c.facing = c.targetX >= c.x ? 'right' : 'left';
+        c.targetY = 35 + Math.random() * 35;
       }
 
-      // Smooth step towards wander target
       const dx = c.targetX - c.x;
       const dy = c.targetY - c.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-
-      if (dist > 0.5) {
-        const speed = (c.isPlayer ? 4.5 : 5.5) * delta;
-        c.x += (dx / dist) * Math.min(dist, speed);
-        c.y += (dy / dist) * Math.min(dist, speed);
+      if (dist > 0.4) {
+        const step = Math.min(dist, 4.0 * delta);
+        c.x += (dx / dist) * step;
+        c.y += (dy / dist) * step;
       }
     };
 
-    // Player squad roams in the left 10% - 45% of the meadow
-    this.squadCombatants.forEach(s => updateUnitMovement(s, 8, 42));
-    // Wild enemies roam in the right 55% - 90% of the meadow
-    this.activeEnemies.forEach(e => updateUnitMovement(e, 58, 90));
+    if (this.playerCombatant) updateUnitMotion(this.playerCombatant, 15, 35);
+    if (this.wildCombatant) updateUnitMotion(this.wildCombatant, 65, 82);
 
-    // Update floating combat numbers & visual attack beams
+    // Update floating damage texts & beams
     for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
       const ft = this.floatingTexts[i];
-      ft.y -= 0.6;
-      ft.opacity -= 0.035;
+      ft.y -= 0.8;
+      ft.opacity -= 0.04;
       if (ft.opacity <= 0) this.floatingTexts.splice(i, 1);
     }
-    for (let i = this.visualEffects.length - 1; i >= 0; i--) {
-      const fx = this.visualEffects[i];
-      fx.life -= delta * 4;
-      if (fx.life <= 0) this.visualEffects.splice(i, 1);
+    for (let i = this.attackBeams.length - 1; i >= 0; i--) {
+      const b = this.attackBeams[i];
+      b.life -= delta * 4;
+      if (b.life <= 0) this.attackBeams.splice(i, 1);
     }
 
-    if (!this.isBattling) {
+    if (!this.isBattling || !this.playerCombatant || !this.wildCombatant) {
       this.notify();
       return;
     }
 
-    // Revive check
-    const allSquadFainted = this.squadCombatants.every(c => c.isFainted);
-    if (allSquadFainted) {
-      this.squadCombatants.forEach(c => {
-        c.isFainted = false;
-        c.currentHp = c.maxHp;
-      });
-      this.addLog('Nurse Joy restored your squad to full vitality!', 'level');
+    // 2. CHECK REVIVE IF PLAYER FAINTED -> Auto-swap to next living pokemon or restore
+    if (this.playerCombatant.currentHp <= 0) {
+      // Find living squad member
+      const nextLivingIdx = this.squad.findIndex(p => p.stats.hp > 0 && p.id !== this.playerCombatant?.pokemon.id);
+      if (nextLivingIdx !== -1) {
+        this.switchActiveBattler(nextLivingIdx);
+      } else {
+        // Squad knocked out: Nurse Joy restoration
+        this.squad.forEach(p => p.stats.hp = p.stats.maxHp);
+        this.switchActiveBattler(0);
+        this.addLog('Nurse Joy restored your squad to full health!', 'level');
+      }
     }
 
-    // 2. SQUAD AUTO-ATTACK
-    this.squadCombatants.forEach(attacker => {
-      if (attacker.isFainted) return;
+    // 3. 1v1 COMBAT TURN: Player attack step
+    const pMoves = [...this.playerCombatant.pokemon.moves].sort((a, b) => a.priorityTier - b.priorityTier);
+    const readyPMove = pMoves.find(m => (this.playerCombatant!.attackCooldowns[m.id] || 0) <= 0);
 
-      const aliveEnemies = this.activeEnemies.filter(e => !e.isFainted);
-      if (aliveEnemies.length === 0) return;
-      const target = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
-
-      const sortedMoves = [...attacker.pokemon.moves].sort((a, b) => a.priorityTier - b.priorityTier);
-      const readyMove = sortedMoves.find(m => {
-        const cd = attacker.attackCooldowns[m.id] || 0;
-        return cd <= 0;
-      });
-
-      attacker.pokemon.moves.forEach(m => {
-        const currentCd = attacker.attackCooldowns[m.id] || 0;
-        if (currentCd > 0) {
-          attacker.attackCooldowns[m.id] = Math.max(0, currentCd - delta);
-        }
-      });
-
-      if (readyMove && (now - attacker.lastAttackTimestamp) > (readyMove.cooldown * 700)) {
-        attacker.lastAttackTimestamp = now;
-        attacker.attackCooldowns[readyMove.id] = readyMove.cooldown;
-        this.executeAttack(attacker, target, readyMove);
-      }
+    pMoves.forEach(m => {
+      const cd = this.playerCombatant!.attackCooldowns[m.id] || 0;
+      if (cd > 0) this.playerCombatant!.attackCooldowns[m.id] = Math.max(0, cd - delta);
     });
 
-    // 3. ENEMY ATTACK
-    this.activeEnemies.forEach(enemy => {
-      if (enemy.isFainted) return;
+    if (readyPMove && (now - this.playerCombatant.lastAttackTimestamp) > (readyPMove.cooldown * 650)) {
+      this.playerCombatant.lastAttackTimestamp = now;
+      this.playerCombatant.attackCooldowns[readyPMove.id] = readyPMove.cooldown;
+      this.execute1v1Attack(this.playerCombatant, this.wildCombatant, readyPMove);
+    }
 
-      const aliveSquad = this.squadCombatants.filter(s => !s.isFainted);
-      if (aliveSquad.length === 0) return;
-      const target = aliveSquad[Math.floor(Math.random() * aliveSquad.length)];
+    // 4. Wild Pokemon attack step
+    const wildMove = this.wildCombatant.pokemon.moves[0] || { name: 'Tackle', power: 40, type: 'Normal', cooldown: 2.2 };
+    const wCd = this.wildCombatant.attackCooldowns['default'] || 0;
+    if (wCd <= 0) {
+      this.wildCombatant.attackCooldowns['default'] = 2.2;
+      this.execute1v1Attack(this.wildCombatant, this.playerCombatant, wildMove as Move);
+    } else {
+      this.wildCombatant.attackCooldowns['default'] = Math.max(0, wCd - delta);
+    }
 
-      const move = enemy.pokemon.moves[0] || { name: 'Tackle', power: 40, type: 'Normal', cooldown: 2.0 };
-      const cd = enemy.attackCooldowns['default'] || 0;
-      if (cd <= 0) {
-        enemy.attackCooldowns['default'] = 2.0;
-        this.executeAttack(enemy, target, move as Move);
-      } else {
-        enemy.attackCooldowns['default'] = Math.max(0, cd - delta);
+    // 5. AUTO-CATCH TRIGGER CHECK
+    if (this.autoCatchSettings.enabled && this.wildCombatant.currentHp > 0) {
+      const isPrismatic = this.wildCombatant.pokemon.prismaticTier !== 'Standard';
+      const isUnreg = !this.pokedexCaught.has(this.wildCombatant.pokemon.dexNumber);
+      const lowHp = this.wildCombatant.currentHp < this.wildCombatant.maxHp * 0.45;
+
+      const shouldThrow =
+        (isPrismatic) ||
+        (this.autoCatchSettings.catchUnregistered && isUnreg) ||
+        (!this.autoCatchSettings.targetPrismaticOnly && lowHp);
+
+      if (shouldThrow && Math.random() < 0.22) {
+        this.attemptCatch(this.wildCombatant);
       }
-    });
+    }
 
-    // 4. AUTO-CATCH RULES
-    this.activeEnemies.forEach(enemy => {
-      if (enemy.isFainted) return;
-
-      if (this.autoCatchSettings.enabled && this.inventory.find(i => i.category === 'balls' && i.count > 0)) {
-        const isPrismatic = enemy.pokemon.prismaticTier !== 'Standard';
-        const isUnregistered = !this.pokedexCaught.has(enemy.pokemon.dexNumber);
-
-        const shouldThrow =
-          (isPrismatic) ||
-          (this.autoCatchSettings.catchUnregistered && isUnregistered) ||
-          (!this.autoCatchSettings.targetPrismaticOnly && enemy.currentHp < enemy.maxHp * 0.45);
-
-        if (shouldThrow && Math.random() < 0.25) {
-          this.attemptCapture(enemy);
-        }
-      }
-    });
-
-    // 5. WAVE CLEAR & REWARDS
-    if (this.activeEnemies.length > 0 && this.activeEnemies.every(e => e.isFainted)) {
+    // 6. WILD FAINT RESOLUTION
+    if (this.wildCombatant.currentHp <= 0) {
       this.waveNumber++;
-      const goldAward = Math.floor(120 * (1 + this.buddyData.passiveTree.goldHoarderTier * 0.4) * (1 + this.currentRegionIndex * 0.6));
+      const goldAward = Math.floor(140 * (1 + this.buddyData.passiveTree.goldHoarderTier * 0.4) * (1 + this.currentRegionIndex * 0.6));
       this.pokeDollars += goldAward;
 
-      if (Math.random() < 0.35 + this.buddyData.passiveTree.autoDowsingTier * 0.12) {
-        const shardsAward = 6 + Math.floor(Math.random() * 8);
+      if (Math.random() < 0.4 + this.buddyData.passiveTree.autoDowsingTier * 0.15) {
+        const shardsAward = 8 + Math.floor(Math.random() * 10);
         this.prismaticShards += shardsAward;
       }
 
-      this.spawnEnemyWave();
+      this.spawnWildEncounter();
     }
 
     this.notify();
   }
 
-  private executeAttack(attacker: ActiveCombatant, target: ActiveCombatant, move: Move) {
+  private execute1v1Attack(attacker: Active1v1Combatant, target: Active1v1Combatant, move: Move) {
     const lvl = attacker.pokemon.level;
     const atk = attacker.pokemon.stats.atk;
     const def = target.pokemon.stats.def;
@@ -433,14 +397,14 @@ export class GameStateManager {
 
     target.currentHp = Math.max(0, target.currentHp - damage);
 
-    // Trigger physical dash forward and hit reaction shake
-    attacker.lungeProgress = 1.0;
-    target.shakeTimer = 1.0;
+    // Clean, crisp attack animations: forward lunge and target recoil shake
+    attacker.lungeX = attacker.isPlayer ? 14 : -14;
+    target.shakeX = attacker.isPlayer ? 8 : -8;
 
-    // Visual beam & damage pop
+    // Laser beam impact
     const beamColor = move.type === 'Fire' ? '#f97316' : move.type === 'Water' ? '#38bdf8' : move.type === 'Electric' ? '#facc15' : move.type === 'Grass' ? '#4ade80' : '#c084fc';
-    this.visualEffects.push({
-      id: `fx_${Date.now()}_${Math.random()}`,
+    this.attackBeams.push({
+      id: `beam_${Date.now()}`,
       fromX: attacker.x,
       fromY: attacker.y,
       toX: target.x,
@@ -454,31 +418,28 @@ export class GameStateManager {
       text: `-${damage}`,
       color: attacker.isPlayer ? '#ef4444' : '#f97316',
       x: target.x,
-      y: target.y - 4,
+      y: target.y - 8,
       opacity: 1.0,
     });
 
     if (target.currentHp <= 0) {
-      target.isFainted = true;
       if (attacker.isPlayer) {
-        this.gainExp(attacker.pokemon, target.pokemon.level * 45);
+        this.gainExp(attacker.pokemon, target.pokemon.level * 50);
         this.addLog(`${attacker.pokemon.speciesName} fainted wild ${target.pokemon.speciesName}!`, 'faint');
       }
     }
   }
 
-  public manualThrowBall(ballId: string, enemyVisualId?: string) {
+  // Manual Ball Throw
+  public manualThrowBall(ballId: string = 'b1') {
+    if (!this.wildCombatant || this.wildCombatant.currentHp <= 0) return;
     const ballItem = this.inventory.find(i => i.id === ballId && i.count > 0);
     if (!ballItem) return;
 
-    const aliveEnemies = this.activeEnemies.filter(e => !e.isFainted);
-    if (aliveEnemies.length === 0) return;
-
-    const target = (enemyVisualId ? aliveEnemies.find(e => e.visualId === enemyVisualId) : null) || aliveEnemies[0];
-    this.attemptCapture(target, ballItem);
+    this.attemptCatch(this.wildCombatant, ballItem);
   }
 
-  private attemptCapture(enemy: ActiveCombatant, specificBall?: InventoryItem) {
+  private attemptCatch(enemy: Active1v1Combatant, specificBall?: InventoryItem) {
     const ballItem = specificBall || this.inventory.find(i => i.id === (
       this.autoCatchSettings.preferredBall === 'ultra' ? 'b3' :
       this.autoCatchSettings.preferredBall === 'prismatic' ? 'b4' :
@@ -493,7 +454,6 @@ export class GameStateManager {
     const catchRate = isMaster ? 1.0 : (0.4 + hpFactor * 0.55);
 
     if (Math.random() < catchRate) {
-      enemy.isFainted = true;
       this.pokedexCaught.add(enemy.pokemon.dexNumber);
       this.pcBox.push(enemy.pokemon);
 
@@ -516,16 +476,18 @@ export class GameStateManager {
         text: 'CAUGHT! ⭐',
         color: '#eab308',
         x: enemy.x,
-        y: enemy.y - 6,
+        y: enemy.y - 12,
         opacity: 1.0,
       });
+
+      this.spawnWildEncounter();
     } else {
       this.floatingTexts.push({
         id: `f_${Date.now()}`,
         text: 'Broke free!',
         color: '#94a3b8',
         x: enemy.x,
-        y: enemy.y - 6,
+        y: enemy.y - 12,
         opacity: 1.0,
       });
     }
@@ -536,12 +498,12 @@ export class GameStateManager {
   public strikeRaidBoss() {
     if (!this.activeRaid.active) return;
     const playerAtk = this.squad.reduce((sum, p) => sum + p.stats.atk, 0);
-    const dmg = Math.floor(playerAtk * (1.8 + Math.random() * 0.8));
+    const dmg = Math.floor(playerAtk * (2.0 + Math.random() * 0.8));
 
     this.activeRaid.currentHp = Math.max(0, this.activeRaid.currentHp - dmg);
     this.activeRaid.totalDamageDealt += dmg;
 
-    // Real economy rewards per raid strike
+    // Real economy rewards
     const goldEarned = Math.floor(dmg * 0.15);
     const shardsEarned = Math.floor(dmg * 0.005);
     this.pokeDollars += goldEarned;
@@ -553,7 +515,6 @@ export class GameStateManager {
       this.addLog(`🏆 RAID VICTORY: Defeated ${this.activeRaid.name}! Awarded +5,000 Shards & Legendary Dex entry!`, 'prismatic');
       this.prismaticShards += 5000;
       this.pokeDollars += 50000;
-      // Reset for next tier
       this.activeRaid.currentHp = this.activeRaid.maxHp;
     }
 
@@ -574,10 +535,9 @@ export class GameStateManager {
       pokemon.expToNextLevel = pokemon.level * 100;
       pokemon.stats = calculatePokemonStats(pokemon.baseStats, pokemon.ivs, pokemon.evs, pokemon.level);
 
-      const combatant = this.squadCombatants.find(c => c.pokemon.id === pokemon.id);
-      if (combatant) {
-        combatant.maxHp = pokemon.stats.maxHp;
-        combatant.currentHp = pokemon.stats.maxHp;
+      if (this.playerCombatant && this.playerCombatant.pokemon.id === pokemon.id) {
+        this.playerCombatant.maxHp = pokemon.stats.maxHp;
+        this.playerCombatant.currentHp = pokemon.stats.maxHp;
       }
 
       this.addLog(`⭐ ${pokemon.speciesName} leveled up to Lv. ${pokemon.level}!`, 'level');
@@ -590,7 +550,7 @@ export class GameStateManager {
     this.currentRegionIndex = regionIndex;
     const region = REGIONS_DATA[regionIndex];
     this.waveNumber = 1;
-    this.spawnEnemyWave();
+    this.spawnWildEncounter();
     this.addLog(`🌍 Traveled to Region ${region.id}: ${region.name} (${region.generation})`, 'prismatic');
     this.notify();
   }
@@ -634,11 +594,12 @@ export class GameStateManager {
     this.squad[squadIndex] = newSquadPkmn;
     this.pcBox[pcBoxIndex] = currentSquadPkmn;
 
-    this.initCombatants();
+    if (this.activeBattlerSlot === squadIndex) {
+      this.switchActiveBattler(squadIndex);
+    }
     this.notify();
   }
 
-  // Real Player Marketplace Listing
   public listPokemonOnMarket(pcIndex: number, price: number, currency: 'dollars' | 'shards') {
     if (pcIndex < 0 || pcIndex >= this.pcBox.length) return;
     const pkmn = this.pcBox.splice(pcIndex, 1)[0];

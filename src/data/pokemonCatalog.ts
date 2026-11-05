@@ -9,14 +9,74 @@ export interface PokemonSpeciesEntry {
 
 export const ALL_POKEMON_ENTRIES: PokemonSpeciesEntry[] = allPokemonRaw as PokemonSpeciesEntry[];
 
-// Get animated Showdown GIF or official artwork sprite URL
-export function getPokemonSpriteUrls(dex: number, isShiny: boolean = false): { sprite: string; artwork: string } {
-  const form = isShiny ? 'ani-shiny' : 'ani';
-  // PokeAPI animated showdown GIF (supports dex IDs 1-1010+)
+// SVG Icons & Sprite URLs for items, balls, and badges (No emojis!)
+export const ASSET_ICONS = {
+  pokeBall: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png',
+  greatBall: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/great-ball.png',
+  ultraBall: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/ultra-ball.png',
+  masterBall: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/master-ball.png',
+  prismaticShard: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/prism-scale.png',
+  potion: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/super-potion.png',
+  currencyCoin: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/amulet-coin.png',
+  rareCandy: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/rare-candy.png',
+};
+
+// Return animated Showdown GIF + official artwork fallback
+export function getPokemonSpriteUrls(dex: number, tier: PrismaticTier = 'Standard'): { sprite: string; artwork: string } {
+  const isShiny = tier === 'Shiny';
   const sprite = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/${isShiny ? 'shiny/' : ''}${dex}.gif`;
   const artwork = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${isShiny ? 'shiny/' : ''}${dex}.png`;
 
   return { sprite, artwork };
+}
+
+// Custom CSS Filters & SVGs for the Custom Prismatic Variant Sprites
+export function getPrismaticSpriteStyle(tier: PrismaticTier): {
+  filterStyle: string;
+  badgeClass: string;
+  auraClass: string;
+  label: string;
+} {
+  switch (tier) {
+    case 'Supernova':
+      // Obsidian shell with fiery incandescent molten solar corona
+      return {
+        filterStyle: 'brightness(0.85) contrast(1.7) saturate(2.4) hue-rotate(335deg) drop-shadow(0 0 10px #f59e0b) drop-shadow(0 0 18px #ea580c)',
+        badgeClass: 'bg-amber-950/80 text-amber-300 border border-amber-500/70 shadow-lg shadow-amber-950/50',
+        auraClass: 'animate-pulse ring-2 ring-amber-400',
+        label: 'Supernova (1/65,536)',
+      };
+    case 'Ethereal':
+      // Translucent cosmic crystal starfield glow
+      return {
+        filterStyle: 'brightness(1.25) contrast(1.3) saturate(1.8) hue-rotate(180deg) drop-shadow(0 0 8px #06b6d4) drop-shadow(0 0 16px #3b82f6)',
+        badgeClass: 'bg-cyan-950/80 text-cyan-300 border border-cyan-500/70 shadow-lg shadow-cyan-950/50',
+        auraClass: 'ring-2 ring-cyan-400',
+        label: 'Ethereal (1/32,768)',
+      };
+    case 'Radiant':
+      // Neon color-shifted celestial aura
+      return {
+        filterStyle: 'brightness(1.15) contrast(1.5) saturate(2.0) hue-rotate(95deg) drop-shadow(0 0 8px #10b981) drop-shadow(0 0 14px #ec4899)',
+        badgeClass: 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/70 shadow-lg shadow-emerald-950/50',
+        auraClass: 'ring-1 ring-emerald-400',
+        label: 'Radiant (1/16,384)',
+      };
+    case 'Shiny':
+      return {
+        filterStyle: 'drop-shadow(0 0 6px rgba(250, 204, 21, 0.8))',
+        badgeClass: 'bg-yellow-950/70 text-yellow-300 border border-yellow-500/60',
+        auraClass: 'ring-1 ring-yellow-400',
+        label: 'Shiny (1/4,096)',
+      };
+    default:
+      return {
+        filterStyle: '',
+        badgeClass: 'bg-slate-800 text-slate-300 border border-slate-700',
+        auraClass: '',
+        label: 'Standard',
+      };
+  }
 }
 
 export const TYPE_PALETTES: Record<ElementalType, { primary: string; secondary: string; accent: string }> = {
@@ -91,10 +151,10 @@ export function rollPrismaticTier(bonusResonance = 0): PrismaticTier {
   const mult = 1 + bonusResonance * 0.5;
   const roll = Math.random();
 
-  if (roll < (1 / 65536) * mult * 30) return 'Supernova';
-  if (roll < (1 / 32768) * mult * 40) return 'Ethereal';
-  if (roll < (1 / 16384) * mult * 50) return 'Radiant';
-  if (roll < (1 / 4096) * mult * 70) return 'Shiny';
+  if (roll < (1 / 65536) * mult * 35) return 'Supernova';
+  if (roll < (1 / 32768) * mult * 45) return 'Ethereal';
+  if (roll < (1 / 16384) * mult * 60) return 'Radiant';
+  if (roll < (1 / 4096) * mult * 80) return 'Shiny';
   return 'Standard';
 }
 
@@ -154,7 +214,7 @@ export function createPokemonInstanceByDex(
   const evs: PokemonEVs = { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
   const stats = calculatePokemonStats(baseStats, ivs, evs, level);
   const moves = getMovesForType(types[0]);
-  const urls = getPokemonSpriteUrls(dex, tier === 'Shiny');
+  const urls = getPokemonSpriteUrls(dex, tier);
 
   return {
     id: `pk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -190,17 +250,17 @@ export const REGIONS_DATA: RegionInfo[] = [
     dexRange: [1, 151],
     levelRange: [1, 100],
     biomeTheme: 'kanto_grass',
-    bgGradient: 'from-emerald-950 via-teal-900 to-slate-950',
-    badgeIcon: '🪨',
+    bgGradient: 'from-emerald-950 via-teal-950 to-slate-950',
+    badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/1.png',
     gyms: [
-      { id: 1, region: 1, name: 'Brock', badgeName: 'Boulder Badge', badgeIcon: '🪨', levelRequirement: 14, acePokemon: 'Onix', aceDexNumber: 95, rewardShards: 50, rewardDollars: 2500, unlocked: true, defeated: true },
-      { id: 2, region: 1, name: 'Misty', badgeName: 'Cascade Badge', badgeIcon: '💧', levelRequirement: 25, acePokemon: 'Starmie', aceDexNumber: 121, rewardShards: 75, rewardDollars: 4000, unlocked: true, defeated: true },
-      { id: 3, region: 1, name: 'Lt. Surge', badgeName: 'Thunder Badge', badgeIcon: '⚡', levelRequirement: 38, acePokemon: 'Raichu', aceDexNumber: 26, rewardShards: 100, rewardDollars: 6000, unlocked: true, defeated: false },
-      { id: 4, region: 1, name: 'Erika', badgeName: 'Rainbow Badge', badgeIcon: '🌈', levelRequirement: 50, acePokemon: 'Vileplume', aceDexNumber: 45, rewardShards: 120, rewardDollars: 8000, unlocked: false, defeated: false },
-      { id: 5, region: 1, name: 'Koga', badgeName: 'Soul Badge', badgeIcon: '💜', levelRequirement: 65, acePokemon: 'Weezing', aceDexNumber: 110, rewardShards: 150, rewardDollars: 11000, unlocked: false, defeated: false },
-      { id: 6, region: 1, name: 'Sabrina', badgeName: 'Marsh Badge', badgeIcon: '🔮', levelRequirement: 78, acePokemon: 'Alakazam', aceDexNumber: 65, rewardShards: 180, rewardDollars: 14000, unlocked: false, defeated: false },
-      { id: 7, region: 1, name: 'Blaine', badgeName: 'Volcano Badge', badgeIcon: '🔥', levelRequirement: 88, acePokemon: 'Magmar', aceDexNumber: 126, rewardShards: 220, rewardDollars: 18000, unlocked: false, defeated: false },
-      { id: 8, region: 1, name: 'Giovanni', badgeName: 'Earth Badge', badgeIcon: '🌱', levelRequirement: 100, acePokemon: 'Rhydon', aceDexNumber: 112, rewardShards: 300, rewardDollars: 25000, unlocked: false, defeated: false },
+      { id: 1, region: 1, name: 'Brock', badgeName: 'Boulder Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/1.png', levelRequirement: 14, acePokemon: 'Onix', aceDexNumber: 95, rewardShards: 50, rewardDollars: 2500, unlocked: true, defeated: true },
+      { id: 2, region: 1, name: 'Misty', badgeName: 'Cascade Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/2.png', levelRequirement: 25, acePokemon: 'Starmie', aceDexNumber: 121, rewardShards: 75, rewardDollars: 4000, unlocked: true, defeated: true },
+      { id: 3, region: 1, name: 'Lt. Surge', badgeName: 'Thunder Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/3.png', levelRequirement: 38, acePokemon: 'Raichu', aceDexNumber: 26, rewardShards: 100, rewardDollars: 6000, unlocked: true, defeated: false },
+      { id: 4, region: 1, name: 'Erika', badgeName: 'Rainbow Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/4.png', levelRequirement: 50, acePokemon: 'Vileplume', aceDexNumber: 45, rewardShards: 120, rewardDollars: 8000, unlocked: false, defeated: false },
+      { id: 5, region: 1, name: 'Koga', badgeName: 'Soul Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/5.png', levelRequirement: 65, acePokemon: 'Weezing', aceDexNumber: 110, rewardShards: 150, rewardDollars: 11000, unlocked: false, defeated: false },
+      { id: 6, region: 1, name: 'Sabrina', badgeName: 'Marsh Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/6.png', levelRequirement: 78, acePokemon: 'Alakazam', aceDexNumber: 65, rewardShards: 180, rewardDollars: 14000, unlocked: false, defeated: false },
+      { id: 7, region: 1, name: 'Blaine', badgeName: 'Volcano Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/7.png', levelRequirement: 88, acePokemon: 'Magmar', aceDexNumber: 126, rewardShards: 220, rewardDollars: 18000, unlocked: false, defeated: false },
+      { id: 8, region: 1, name: 'Giovanni', badgeName: 'Earth Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/8.png', levelRequirement: 100, acePokemon: 'Rhydon', aceDexNumber: 112, rewardShards: 300, rewardDollars: 25000, unlocked: false, defeated: false },
     ],
   },
   {
@@ -210,17 +270,17 @@ export const REGIONS_DATA: RegionInfo[] = [
     dexRange: [152, 251],
     levelRange: [101, 200],
     biomeTheme: 'johto_autumn',
-    bgGradient: 'from-amber-950 via-stone-900 to-slate-950',
-    badgeIcon: '🪶',
+    bgGradient: 'from-amber-950 via-stone-950 to-slate-950',
+    badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/9.png',
     gyms: [
-      { id: 9, region: 2, name: 'Falkner', badgeName: 'Zephyr Badge', badgeIcon: '🪶', levelRequirement: 115, acePokemon: 'Pidgeot', aceDexNumber: 18, rewardShards: 350, rewardDollars: 30000, unlocked: false, defeated: false },
-      { id: 10, region: 2, name: 'Bugsy', badgeName: 'Hive Badge', badgeIcon: '🐝', levelRequirement: 128, acePokemon: 'Scizor', aceDexNumber: 212, rewardShards: 400, rewardDollars: 35000, unlocked: false, defeated: false },
-      { id: 11, region: 2, name: 'Whitney', badgeName: 'Plain Badge', badgeIcon: '⚪', levelRequirement: 140, acePokemon: 'Miltank', aceDexNumber: 241, rewardShards: 450, rewardDollars: 40000, unlocked: false, defeated: false },
-      { id: 12, region: 2, name: 'Morty', badgeName: 'Fog Badge', badgeIcon: '🌫️', levelRequirement: 155, acePokemon: 'Gengar', aceDexNumber: 94, rewardShards: 500, rewardDollars: 45000, unlocked: false, defeated: false },
-      { id: 13, region: 2, name: 'Chuck', badgeName: 'Storm Badge', badgeIcon: '🥊', levelRequirement: 170, acePokemon: 'Poliwrath', aceDexNumber: 62, rewardShards: 550, rewardDollars: 50000, unlocked: false, defeated: false },
-      { id: 14, region: 2, name: 'Jasmine', badgeName: 'Mineral Badge', badgeIcon: '⚙️', levelRequirement: 182, acePokemon: 'Steelix', aceDexNumber: 208, rewardShards: 600, rewardDollars: 55000, unlocked: false, defeated: false },
-      { id: 15, region: 2, name: 'Pryce', badgeName: 'Glacier Badge', badgeIcon: '❄️', levelRequirement: 192, acePokemon: 'Mamoswine', aceDexNumber: 473, rewardShards: 650, rewardDollars: 60000, unlocked: false, defeated: false },
-      { id: 16, region: 2, name: 'Clair', badgeName: 'Rising Badge', badgeIcon: '🐉', levelRequirement: 200, acePokemon: 'Kingdra', aceDexNumber: 230, rewardShards: 750, rewardDollars: 70000, unlocked: false, defeated: false },
+      { id: 9, region: 2, name: 'Falkner', badgeName: 'Zephyr Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/9.png', levelRequirement: 115, acePokemon: 'Pidgeot', aceDexNumber: 18, rewardShards: 350, rewardDollars: 30000, unlocked: false, defeated: false },
+      { id: 10, region: 2, name: 'Bugsy', badgeName: 'Hive Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/10.png', levelRequirement: 128, acePokemon: 'Scizor', aceDexNumber: 212, rewardShards: 400, rewardDollars: 35000, unlocked: false, defeated: false },
+      { id: 11, region: 2, name: 'Whitney', badgeName: 'Plain Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/11.png', levelRequirement: 140, acePokemon: 'Miltank', aceDexNumber: 241, rewardShards: 450, rewardDollars: 40000, unlocked: false, defeated: false },
+      { id: 12, region: 2, name: 'Morty', badgeName: 'Fog Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/12.png', levelRequirement: 155, acePokemon: 'Gengar', aceDexNumber: 94, rewardShards: 500, rewardDollars: 45000, unlocked: false, defeated: false },
+      { id: 13, region: 2, name: 'Chuck', badgeName: 'Storm Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/13.png', levelRequirement: 170, acePokemon: 'Poliwrath', aceDexNumber: 62, rewardShards: 550, rewardDollars: 50000, unlocked: false, defeated: false },
+      { id: 14, region: 2, name: 'Jasmine', badgeName: 'Mineral Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/14.png', levelRequirement: 182, acePokemon: 'Steelix', aceDexNumber: 208, rewardShards: 600, rewardDollars: 55000, unlocked: false, defeated: false },
+      { id: 15, region: 2, name: 'Pryce', badgeName: 'Glacier Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/15.png', levelRequirement: 192, acePokemon: 'Mamoswine', aceDexNumber: 473, rewardShards: 650, rewardDollars: 60000, unlocked: false, defeated: false },
+      { id: 16, region: 2, name: 'Clair', badgeName: 'Rising Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/badges/16.png', levelRequirement: 200, acePokemon: 'Kingdra', aceDexNumber: 230, rewardShards: 750, rewardDollars: 70000, unlocked: false, defeated: false },
     ],
   },
   {
@@ -231,10 +291,10 @@ export const REGIONS_DATA: RegionInfo[] = [
     levelRange: [201, 300],
     biomeTheme: 'hoenn_volcano',
     bgGradient: 'from-orange-950 via-red-950 to-slate-950',
-    badgeIcon: '🌋',
+    badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/magma-stone.png',
     gyms: [
-      { id: 17, region: 3, name: 'Roxanne', badgeName: 'Stone Badge', badgeIcon: '🏛️', levelRequirement: 215, acePokemon: 'Nosepass', aceDexNumber: 299, rewardShards: 800, rewardDollars: 75000, unlocked: false, defeated: false },
-      { id: 24, region: 3, name: 'Wallace', badgeName: 'Rain Badge', badgeIcon: '🌊', levelRequirement: 300, acePokemon: 'Milotic', aceDexNumber: 350, rewardShards: 1200, rewardDollars: 100000, unlocked: false, defeated: false },
+      { id: 17, region: 3, name: 'Roxanne', badgeName: 'Stone Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/hard-stone.png', levelRequirement: 215, acePokemon: 'Nosepass', aceDexNumber: 299, rewardShards: 800, rewardDollars: 75000, unlocked: false, defeated: false },
+      { id: 24, region: 3, name: 'Wallace', badgeName: 'Rain Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/water-stone.png', levelRequirement: 300, acePokemon: 'Milotic', aceDexNumber: 350, rewardShards: 1200, rewardDollars: 100000, unlocked: false, defeated: false },
     ],
   },
   {
@@ -244,10 +304,10 @@ export const REGIONS_DATA: RegionInfo[] = [
     dexRange: [387, 493],
     levelRange: [301, 400],
     biomeTheme: 'sinnoh_snow',
-    bgGradient: 'from-sky-950 via-slate-900 to-slate-950',
-    badgeIcon: '❄️',
+    bgGradient: 'from-sky-950 via-slate-950 to-slate-950',
+    badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/icicle-plate.png',
     gyms: [
-      { id: 32, region: 4, name: 'Volkner', badgeName: 'Beacon Badge', badgeIcon: '💡', levelRequirement: 400, acePokemon: 'Electivire', aceDexNumber: 466, rewardShards: 1800, rewardDollars: 150000, unlocked: false, defeated: false },
+      { id: 32, region: 4, name: 'Volkner', badgeName: 'Beacon Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/zap-plate.png', levelRequirement: 400, acePokemon: 'Electivire', aceDexNumber: 466, rewardShards: 1800, rewardDollars: 150000, unlocked: false, defeated: false },
     ],
   },
   {
@@ -257,10 +317,10 @@ export const REGIONS_DATA: RegionInfo[] = [
     dexRange: [494, 649],
     levelRange: [401, 500],
     biomeTheme: 'unova_city',
-    bgGradient: 'from-blue-950 via-slate-900 to-slate-950',
-    badgeIcon: '🏙️',
+    bgGradient: 'from-blue-950 via-slate-950 to-slate-950',
+    badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/draco-plate.png',
     gyms: [
-      { id: 40, region: 5, name: 'Drayden', badgeName: 'Legend Badge', badgeIcon: '🐲', levelRequirement: 500, acePokemon: 'Haxorus', aceDexNumber: 612, rewardShards: 2400, rewardDollars: 200000, unlocked: false, defeated: false },
+      { id: 40, region: 5, name: 'Drayden', badgeName: 'Legend Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/dragon-scale.png', levelRequirement: 500, acePokemon: 'Haxorus', aceDexNumber: 612, rewardShards: 2400, rewardDollars: 200000, unlocked: false, defeated: false },
     ],
   },
   {
@@ -271,9 +331,9 @@ export const REGIONS_DATA: RegionInfo[] = [
     levelRange: [501, 600],
     biomeTheme: 'kalos_fairy',
     bgGradient: 'from-fuchsia-950 via-purple-950 to-slate-950',
-    badgeIcon: '✨',
+    badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/pixie-plate.png',
     gyms: [
-      { id: 48, region: 6, name: 'Wulfric', badgeName: 'Iceberg Badge', badgeIcon: '🏔️', levelRequirement: 600, acePokemon: 'Avalugg', aceDexNumber: 713, rewardShards: 3200, rewardDollars: 260000, unlocked: false, defeated: false },
+      { id: 48, region: 6, name: 'Wulfric', badgeName: 'Iceberg Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/never-melt-ice.png', levelRequirement: 600, acePokemon: 'Avalugg', aceDexNumber: 713, rewardShards: 3200, rewardDollars: 260000, unlocked: false, defeated: false },
     ],
   },
   {
@@ -284,9 +344,9 @@ export const REGIONS_DATA: RegionInfo[] = [
     levelRange: [601, 700],
     biomeTheme: 'alola_beach',
     bgGradient: 'from-cyan-950 via-emerald-950 to-slate-950',
-    badgeIcon: '🏝️',
+    badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/sun-stone.png',
     gyms: [
-      { id: 56, region: 7, name: 'Kahuna Hala', badgeName: 'Fightium Z', badgeIcon: '☀️', levelRequirement: 700, acePokemon: 'Crabominable', aceDexNumber: 740, rewardShards: 4200, rewardDollars: 350000, unlocked: false, defeated: false },
+      { id: 56, region: 7, name: 'Kahuna Hala', badgeName: 'Fightium Z', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/fist-plate.png', levelRequirement: 700, acePokemon: 'Crabominable', aceDexNumber: 740, rewardShards: 4200, rewardDollars: 350000, unlocked: false, defeated: false },
     ],
   },
   {
@@ -297,9 +357,9 @@ export const REGIONS_DATA: RegionInfo[] = [
     levelRange: [701, 800],
     biomeTheme: 'galar_wild',
     bgGradient: 'from-indigo-950 via-violet-950 to-slate-950',
-    badgeIcon: '⚔️',
+    badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/rusty-sword.png',
     gyms: [
-      { id: 64, region: 8, name: 'Raihan', badgeName: 'Dragon Badge', badgeIcon: '🌪️', levelRequirement: 800, acePokemon: 'Duraludon', aceDexNumber: 884, rewardShards: 5500, rewardDollars: 450000, unlocked: false, defeated: false },
+      { id: 64, region: 8, name: 'Raihan', badgeName: 'Dragon Badge', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/dragon-fang.png', levelRequirement: 800, acePokemon: 'Duraludon', aceDexNumber: 884, rewardShards: 5500, rewardDollars: 450000, unlocked: false, defeated: false },
     ],
   },
   {
@@ -310,9 +370,9 @@ export const REGIONS_DATA: RegionInfo[] = [
     levelRange: [801, 900],
     biomeTheme: 'paldea_crater',
     bgGradient: 'from-purple-950 via-rose-950 to-slate-950',
-    badgeIcon: '💠',
+    badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/booster-energy.png',
     gyms: [
-      { id: 72, region: 9, name: 'Geeta', badgeName: 'Spectra Core', badgeIcon: '💠', levelRequirement: 900, acePokemon: 'Glimmora', aceDexNumber: 970, rewardShards: 10000, rewardDollars: 1000000, unlocked: false, defeated: false },
+      { id: 72, region: 9, name: 'Geeta', badgeName: 'Spectra Core', badgeIcon: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/tera-orb.png', levelRequirement: 900, acePokemon: 'Glimmora', aceDexNumber: 970, rewardShards: 10000, rewardDollars: 1000000, unlocked: false, defeated: false },
     ],
   },
 ];

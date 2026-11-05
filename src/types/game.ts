@@ -1,4 +1,4 @@
-// Types for Pokémon: Spectra Chronicles
+// Clean 1v1 Battle and Meadow Types for Pokémon: Spectra Chronicles
 
 export type PrismaticTier = 'Standard' | 'Shiny' | 'Radiant' | 'Ethereal' | 'Supernova';
 
@@ -73,25 +73,23 @@ export interface PokemonData {
   artworkUrl: string;
 }
 
-export interface ActiveCombatant {
+// 1v1 Arena Active Combatant
+export interface Active1v1Combatant {
   pokemon: PokemonData;
   isPlayer: boolean;
-  positionSlot: number;
   currentHp: number;
   maxHp: number;
-  // 2D Canvas Meadow Roaming Position (in % 0-100 of meadow area)
+  // Position % in the battle frame
   x: number;
   y: number;
   targetX: number;
   targetY: number;
   facing: 'left' | 'right';
   wanderTimer: number;
+  lungeX: number; // Attack jump offset
+  shakeX: number; // Hit reaction offset
   attackCooldowns: Record<string, number>;
   lastAttackTimestamp: number;
-  isFainted: boolean;
-  visualId: string;
-  lungeProgress: number; // 0 to 1 for physical attack dash
-  shakeTimer: number;
 }
 
 export interface BuddyData {

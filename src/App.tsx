@@ -12,11 +12,9 @@ export const App: React.FC = () => {
   const gameState = GameStateManager.getInstance();
   const [, setTick] = useState<number>(0);
 
-  // Bottom drawer state (collapsible to allow full-screen view of the roaming Meadow)
-  const [activeTab, setActiveTab] = useState<TabKey>('battle');
-  const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(true);
+  // Active navigation tab
+  const [activeTab, setActiveTab] = useState<TabKey>('meadow');
 
-  // Subscribe to real-time auto-combat & free roaming ticks
   useEffect(() => {
     const unsubscribe = gameState.subscribe(() => {
       setTick(t => t + 1);
@@ -24,45 +22,28 @@ export const App: React.FC = () => {
     return unsubscribe;
   }, []);
 
-  const handleSelectTab = (tab: TabKey) => {
-    if (activeTab === tab && isDrawerOpen) {
-      setIsDrawerOpen(false);
-    } else {
-      setActiveTab(tab);
-      setIsDrawerOpen(true);
-    }
-  };
-
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans">
-      {/* Central Interactive Roaming Meadow Battlefield (Tallgrass Inspired) */}
-      <div className="absolute inset-0 z-0">
-        <MeadowBattlefield state={gameState} />
-      </div>
+    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans flex flex-col">
+      {/* CENTRAL VIEWPORT (MEADOW OR DEDICATED APP SCREEN) */}
+      <main className="flex-1 relative overflow-hidden pb-28">
+        {activeTab === 'meadow' && <MeadowBattlefield state={gameState} />}
 
-      {/* Responsive App Drawer Overlay */}
-      <div
-        className={`fixed left-0 right-0 bottom-16 z-40 transition-all duration-300 ease-out pointer-events-none ${
-          isDrawerOpen ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0 pointer-events-none'
-        }`}
-      >
-        <div className="max-w-4xl mx-auto px-3">
-          <div className="pointer-events-auto bg-slate-950/92 backdrop-blur-2xl rounded-2xl border border-slate-800/80 shadow-2xl max-h-[50vh] sm:max-h-[54vh] overflow-y-auto p-4 custom-scrollbar">
-            {activeTab === 'battle' && <BattleTab state={gameState} />}
-            {activeTab === 'squad' && <SquadBuddyTab state={gameState} />}
+        {/* CLEAN, FULLY STRUCTURED APP SCREENS (NON-COLLAPSING, CLEAN TALLGRASS ARCHITECTURE) */}
+        {activeTab !== 'meadow' && (
+          <div className="h-full overflow-y-auto p-4 md:p-6 max-w-4xl mx-auto custom-scrollbar">
+            {activeTab === 'team' && <SquadBuddyTab state={gameState} />}
             {activeTab === 'world' && <WorldTab state={gameState} />}
             {activeTab === 'shop' && <ShopTab state={gameState} />}
-            {activeTab === 'social' && <SocialHubTab state={gameState} />}
+            {activeTab === 'raid' && <SocialHubTab state={gameState} />}
           </div>
-        </div>
-      </div>
+        )}
+      </main>
 
-      {/* Persistent Bottom Dock Navigation Bar */}
+      {/* FIXED, NON-COLLAPSIBLE PROPERLY-SIZED BOTTOM NAVIGATION BAR */}
       <BottomDock
+        state={gameState}
         activeTab={activeTab}
-        onSelectTab={handleSelectTab}
-        isOpen={isDrawerOpen}
-        onToggleOpen={() => setIsDrawerOpen(!isDrawerOpen)}
+        onSelectTab={setActiveTab}
       />
     </div>
   );
