@@ -411,7 +411,7 @@ export class GameStateManager {
         : this.worldManager.enemyMeshes.get(target.visual3dId);
 
       if (fromMesh && targetMesh) {
-        this.worldManager.triggerAttackFx(fromMesh.group.position, targetMesh.group.position, move.type);
+        this.worldManager.triggerAttackFx(fromMesh.group.position, targetMesh.group.position, move.type, fromMesh, targetMesh);
         this.worldManager.addFloatingText(
           `-${damage}`,
           attacker.isPlayer ? '#ef4444' : '#f97316',

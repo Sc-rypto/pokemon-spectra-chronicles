@@ -10,20 +10,29 @@ export class ProceduralPokemonMesh {
   public auraParticles?: THREE.Points;
   public footstepParticles?: THREE.Points;
   private mixer?: THREE.AnimationMixer;
-  private isLoaded: boolean = false;
   private placeholderMesh?: THREE.Group;
 
-  constructor(pokemon: PokemonData) {
-    this.pokemon = pokemon;
-    this.group = new THREE.Group();
-    
-    // 1. Build an instant aesthetic placeholder while the textured GLB streams in
-    this.buildInstantPlaceholder();
+  // Free-roam & battle motion state
+  public basePosition: THREE.Vector3 = new THREE.Vector3();
+  public targetPosition: THREE.Vector3 = new THREE.Vector3();
+  public velocity: THREE.Vector3 = new THREE.Vector3();
+  public isPlayer: boolean = false;
+  public isFainted: boolean = false;
+  
+  // Dynamic action state
+  public attackLungeTime: number = 0;
+  public attackTargetPos: THREE.Vector3 | null = null;
+  public hitShakeTime: number = 0;
+  public wanderTimer: number = Math.random() * 2;
 
-    // 2. Fetch official textured 3D model with DRACO compression and apply custom shaders
+  constructor(pokemon: PokemonData, isPlayer: boolean = false) {
+    this.pokemon = pokemon;
+    this.isPlayer = isPlayer;
+    this.group = new THREE.Group();
+
+    this.buildInstantPlaceholder();
     this.loadTexturedModel();
 
-    // 3. Attach Tier Particle Auras
     if (this.pokemon.prismaticTier !== 'Standard') {
       this.attachPrismaticParticles();
     }
@@ -48,31 +57,26 @@ export class ProceduralPokemonMesh {
       const isShiny = this.pokemon.prismaticTier === 'Shiny';
       const gltf = await pokemonModelManager.loadPokemonModel(this.pokemon.dexNumber, isShiny);
 
-      // Clone scene for multiple instances on field
       const clonedScene = gltf.scene.clone(true);
 
-      // Extract bounding box to normalize scale so all Pokémon look balanced in the 3D scene
       const box = new THREE.Box3().setFromObject(clonedScene);
       const size = new THREE.Vector3();
       box.getSize(size);
       const maxDim = Math.max(size.x, size.y, size.z);
-      const targetHeight = 1.8 * (this.pokemon.scale || 1.0);
+      const targetHeight = 1.9 * (this.pokemon.scale || 1.0);
       const scaleFactor = maxDim > 0 ? targetHeight / maxDim : 1.0;
 
       clonedScene.scale.setScalar(scaleFactor);
 
-      // Center model pivot at feet on the ground plane
       const updatedBox = new THREE.Box3().setFromObject(clonedScene);
       clonedScene.position.y = -updatedBox.min.y;
 
-      // Enable shadows and apply Custom Shaders to textures
       clonedScene.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
           mesh.castShadow = true;
           mesh.receiveShadow = true;
 
-          // Preserve the original diffuse texture map
           let originalMap: THREE.Texture | null = null;
           if (Array.isArray(mesh.material)) {
             originalMap = (mesh.material[0] as THREE.MeshStandardMaterial).map;
@@ -80,31 +84,26 @@ export class ProceduralPokemonMesh {
             originalMap = (mesh.material as THREE.MeshStandardMaterial).map;
           }
 
-          // Apply shader variant (Standard, Shiny, Radiant, Ethereal, Supernova)
           const newMat = applyPrismaticShaderToMesh(mesh, this.pokemon.prismaticTier, originalMap);
           mesh.material = newMat;
           this.materials.push(newMat);
         }
       });
 
-      // Handle GLTF animations if present
       if (gltf.animations && gltf.animations.length > 0) {
         this.mixer = new THREE.AnimationMixer(clonedScene);
         const action = this.mixer.clipAction(gltf.animations[0]);
         action.play();
       }
 
-      // Remove the instant placeholder and add the real textured 3D model
       if (this.placeholderMesh) {
         this.group.remove(this.placeholderMesh);
         this.placeholderMesh = undefined;
       }
 
       this.group.add(clonedScene);
-      this.isLoaded = true;
     } catch (_err) {
-      // Model fallback if offline or failed: placeholder remains cleanly styled
-      console.warn(`Could not load GLB for ${this.pokemon.speciesName}, using fallback representation.`);
+      // Clean fallback kept
     }
   }
 
@@ -149,7 +148,6 @@ export class ProceduralPokemonMesh {
     this.auraParticles = new THREE.Points(particleGeo, particleMat);
     this.group.add(this.auraParticles);
 
-    // Supernova custom ground flame trail
     if (tier === 'Supernova') {
       const trailCount = 30;
       const trailGeo = new THREE.BufferGeometry();
@@ -172,36 +170,85 @@ export class ProceduralPokemonMesh {
     }
   }
 
-  public update(time: number, delta: number = 0.016, isWalking: boolean = false, isAttacking: boolean = false) {
-    // 1. Update GLTF bone animation mixer if present
+  // Trigger real 3D physical attack dash towards enemy
+  public triggerPhysicalLunge(targetPos: THREE.Vector3) {
+    this.attackLungeTime = 0.45; // seconds
+    this.attackTargetPos = targetPos.clone();
+  }
+
+  // Trigger hit reaction shake
+  public triggerHitShake() {
+    this.hitShakeTime = 0.25;
+  }
+
+  public update(time: number, delta: number = 0.016) {
     if (this.mixer) {
       this.mixer.update(delta);
-    } else {
-      // Procedural idle breathing bob
-      const bob = Math.sin(time * 3) * 0.06;
-      this.group.position.y += bob * 0.04;
     }
 
-    // 2. Update custom shader uniforms (uTime)
     this.materials.forEach(mat => {
       if (mat instanceof THREE.ShaderMaterial && mat.uniforms.uTime) {
         mat.uniforms.uTime.value = time;
       }
     });
 
-    // 3. Walking stride animation
-    if (isWalking) {
-      this.group.position.y = Math.abs(Math.sin(time * 6)) * 0.12;
+    // 1. FREE-ROAMING MOVEMENT ENGINE:
+    // Periodically pick smooth random wandering targets around their zone
+    this.wanderTimer -= delta;
+    if (this.wanderTimer <= 0) {
+      this.wanderTimer = 1.5 + Math.random() * 2.5;
+      const radius = this.isPlayer ? 2.5 : 3.5;
+      const ox = (Math.random() - 0.5) * radius * 2;
+      const oz = (Math.random() - 0.5) * radius * 1.5;
+      this.targetPosition.set(this.basePosition.x + ox, 0, this.basePosition.z + oz);
     }
 
-    // 4. Attack surge scale
-    if (isAttacking) {
-      this.group.scale.setScalar(1.18);
+    // 2. Physical Attack Dash vs Idle Roaming:
+    if (this.attackLungeTime > 0 && this.attackTargetPos) {
+      this.attackLungeTime -= delta;
+      // Dash directly toward opponent during the strike window!
+      const dirToTarget = this.attackTargetPos.clone().sub(this.group.position);
+      const dist = dirToTarget.length();
+      if (dist > 1.2) {
+        dirToTarget.normalize();
+        this.group.position.addScaledVector(dirToTarget, delta * 12.0);
+        // Face the target
+        this.group.rotation.y = Math.atan2(dirToTarget.x, dirToTarget.z);
+      }
+      this.group.scale.setScalar(1.22);
     } else {
+      // Smoothly steer towards wander target
+      const toTarget = this.targetPosition.clone().sub(this.group.position);
+      toTarget.y = 0;
+      const dist = toTarget.length();
+
+      if (dist > 0.1) {
+        toTarget.normalize();
+        const moveSpeed = this.isPlayer ? 1.6 : 2.2;
+        this.group.position.addScaledVector(toTarget, delta * moveSpeed);
+        
+        // Smoothly rotate to face direction of movement
+        const targetAngle = Math.atan2(toTarget.x, toTarget.z);
+        this.group.rotation.y = THREE.MathUtils.lerp(this.group.rotation.y, targetAngle, delta * 6.0);
+
+        // Walking bob stride
+        this.group.position.y = Math.abs(Math.sin(time * 8)) * 0.16;
+      } else {
+        // Idle gentle breathing bob
+        this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, 0, delta * 4);
+      }
+
       this.group.scale.setScalar(1.0);
     }
 
-    // 5. Rotate Prismatic orbital auras
+    // 3. Hit Shake Reaction
+    if (this.hitShakeTime > 0) {
+      this.hitShakeTime -= delta;
+      this.group.position.x += (Math.random() - 0.5) * 0.25;
+      this.group.position.z += (Math.random() - 0.5) * 0.25;
+    }
+
+    // 4. Rotate Prismatic auras
     if (this.auraParticles) {
       this.auraParticles.rotation.y = time * 0.75;
       this.auraParticles.rotation.x = Math.sin(time * 0.4) * 0.2;

@@ -52,11 +52,17 @@ export class WorldSceneManager {
   private clock = new THREE.Clock();
   public onFloatingTextsUpdate?: (texts: FloatingText[]) => void;
 
+  // Unit Screen Anchors for In-World HP Bars & Nameplates
+  public unitScreenAnchors: { id: string; name: string; hpRatio: number; screenPos: { x: number; y: number }; isPlayer: boolean; level: number; tier: string }[] = [];
+  public onUnitAnchorsUpdate?: (anchors: typeof this.unitScreenAnchors) => void;
+
   constructor(container: HTMLElement) {
     this.container = container;
     this.scene = new THREE.Scene();
+    
+    // Dynamic cinematic camera positioned right in front of the active battlefield
     this.camera = new THREE.PerspectiveCamera(
-      45,
+      50,
       container.clientWidth / container.clientHeight,
       0.1,
       1000
@@ -68,7 +74,7 @@ export class WorldSceneManager {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMappingExposure = 1.2;
 
     container.appendChild(this.renderer.domElement);
 
@@ -82,16 +88,17 @@ export class WorldSceneManager {
   }
 
   private setupCamera() {
-    this.camera.position.set(0, 10, 18);
-    this.camera.lookAt(0, 1.0, 0);
+    // Dynamic elevated perspective framing active combat directly in center view
+    this.camera.position.set(0, 9.5, 17);
+    this.camera.lookAt(0, 1.2, -1.0);
   }
 
   private setupLighting() {
-    this.hemiLight = new THREE.HemisphereLight(0xffffff, 0x334155, 1.4);
+    this.hemiLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 1.4);
     this.hemiLight.position.set(0, 25, 0);
     this.scene.add(this.hemiLight);
 
-    this.dirLight = new THREE.DirectionalLight(0xffffff, 1.8);
+    this.dirLight = new THREE.DirectionalLight(0xffffff, 1.9);
     this.dirLight.position.set(10, 24, 12);
     this.dirLight.castShadow = true;
     this.dirLight.shadow.mapSize.width = 1024;
@@ -106,7 +113,6 @@ export class WorldSceneManager {
   }
 
   private setupEnvironment() {
-    // Stylized terrain ground plane
     const groundGeo = new THREE.PlaneGeometry(90, 90, 32, 32);
     const groundMat = new THREE.MeshStandardMaterial({
       color: 0x2e7d32,
@@ -118,7 +124,7 @@ export class WorldSceneManager {
     this.groundMesh.receiveShadow = true;
     this.scene.add(this.groundMesh);
 
-    // Dynamic glowing Battle Arena circle
+    // Glowing battlefield circle
     const ringGeo = new THREE.RingGeometry(8.5, 9.0, 48);
     const ringMat = new THREE.MeshBasicMaterial({
       color: 0x6366f1,
@@ -131,7 +137,6 @@ export class WorldSceneManager {
     this.arenaRing.position.y = 0.03;
     this.scene.add(this.arenaRing);
 
-    // Battlefield grid lines
     this.gridHelper = new THREE.GridHelper(40, 20, 0x818cf8, 0x1e293b);
     this.gridHelper.position.y = 0.02;
     this.scene.add(this.gridHelper);
@@ -139,7 +144,7 @@ export class WorldSceneManager {
     this.scene.add(this.biomeDecos);
     this.generateBiomeDecorations(REGIONS_DATA[0]);
 
-    this.scene.fog = new THREE.FogExp2(0xb2dfdb, 0.018);
+    this.scene.fog = new THREE.FogExp2(0xb2dfdb, 0.016);
     this.scene.background = new THREE.Color(REGIONS_DATA[0].skyColor);
   }
 
@@ -149,19 +154,16 @@ export class WorldSceneManager {
     const skinMat = new THREE.MeshStandardMaterial({ color: 0xffd1a4, roughness: 0.6 });
     const capMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.4 });
 
-    // Torso
     const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, 0.9, 8), coatMat);
     torso.position.y = 1.35;
     torso.castShadow = true;
     trainerGroup.add(torso);
 
-    // Head
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 10), skinMat);
     head.position.y = 2.05;
     head.castShadow = true;
     trainerGroup.add(head);
 
-    // Trainer Cap
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.18, 8), capMat);
     cap.position.y = 2.25;
     trainerGroup.add(cap);
@@ -170,7 +172,6 @@ export class WorldSceneManager {
     visor.position.set(0, 2.2, -0.25);
     trainerGroup.add(visor);
 
-    // Legs
     const legGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.9, 6);
     const legMat = new THREE.MeshStandardMaterial({ color: 0x0f172a });
     const legL = new THREE.Mesh(legGeo, legMat);
@@ -251,24 +252,30 @@ export class WorldSceneManager {
       }
     });
 
+    // Base positions across front battle line
     const squadSlots = [
-      { x: -5.0, z: 4.5 },
-      { x: -2.5, z: 3.5 },
-      { x: 0.0, z: 3.0 },
-      { x: 2.5, z: 3.5 },
-      { x: 5.0, z: 4.5 },
+      { x: -5.0, z: 3.5 },
+      { x: -2.5, z: 2.5 },
+      { x: 0.0, z: 2.0 },
+      { x: 2.5, z: 2.5 },
+      { x: 5.0, z: 3.5 },
     ];
 
     squad.forEach((pkmn, idx) => {
       let mesh = this.playerMeshes.get(pkmn.id);
       if (!mesh) {
-        mesh = new ProceduralPokemonMesh(pkmn);
+        mesh = new ProceduralPokemonMesh(pkmn, true);
         this.playerMeshes.set(pkmn.id, mesh);
         this.scene.add(mesh.group);
+        // Initial placement
+        const slot = squadSlots[idx] || squadSlots[0];
+        mesh.basePosition.set(slot.x, 0, slot.z);
+        mesh.targetPosition.copy(mesh.basePosition);
+        mesh.group.position.copy(mesh.basePosition);
+      } else {
+        const slot = squadSlots[idx] || squadSlots[0];
+        mesh.basePosition.set(slot.x, 0, slot.z);
       }
-      const slot = squadSlots[idx] || squadSlots[0];
-      mesh.group.position.set(slot.x, 0, slot.z);
-      mesh.group.rotation.y = 0;
     });
 
     if (buddy) {
@@ -277,11 +284,12 @@ export class WorldSceneManager {
           this.scene.remove(this.buddyMesh.group);
           this.buddyMesh.dispose();
         }
-        this.buddyMesh = new ProceduralPokemonMesh(buddy);
+        this.buddyMesh = new ProceduralPokemonMesh(buddy, true);
         this.scene.add(this.buddyMesh.group);
+        this.buddyMesh.basePosition.set(1.6, 0, 9.5);
+        this.buddyMesh.targetPosition.copy(this.buddyMesh.basePosition);
+        this.buddyMesh.group.position.copy(this.buddyMesh.basePosition);
       }
-      this.buddyMesh.group.position.set(1.6, 0, 9.5);
-      this.buddyMesh.group.rotation.y = -0.3;
     }
   }
 
@@ -296,28 +304,37 @@ export class WorldSceneManager {
       }
     });
 
+    // Wild enemy roaming territory
     const enemySlots = [
-      { x: -4.0, z: -5.0 },
-      { x: -1.5, z: -6.5 },
-      { x: 1.5, z: -6.5 },
-      { x: 4.0, z: -5.0 },
+      { x: -3.8, z: -4.5 },
+      { x: -1.2, z: -5.5 },
+      { x: 1.5, z: -5.5 },
+      { x: 3.8, z: -4.5 },
     ];
 
     enemies.forEach((enemy, idx) => {
       let mesh = this.enemyMeshes.get(enemy.visual3dId);
       if (!mesh) {
-        mesh = new ProceduralPokemonMesh(enemy.pokemon);
+        mesh = new ProceduralPokemonMesh(enemy.pokemon, false);
         this.enemyMeshes.set(enemy.visual3dId, mesh);
         this.scene.add(mesh.group);
+        const slot = enemySlots[idx] || enemySlots[0];
+        mesh.basePosition.set(slot.x, 0, slot.z);
+        mesh.targetPosition.copy(mesh.basePosition);
+        mesh.group.position.copy(mesh.basePosition);
       }
-      const slot = enemySlots[idx] || enemySlots[0];
-      mesh.group.position.set(slot.x, 0, slot.z);
-      mesh.group.rotation.y = Math.PI;
     });
   }
 
-  // 3D Animated Projectiles and Impact Bursts
-  public triggerAttackFx(fromPos: THREE.Vector3, toPos: THREE.Vector3, type: string) {
+  // 3D Physical lunge and projectile triggers
+  public triggerAttackFx(fromPos: THREE.Vector3, toPos: THREE.Vector3, type: string, attackerMesh?: ProceduralPokemonMesh, targetMesh?: ProceduralPokemonMesh) {
+    if (attackerMesh) {
+      attackerMesh.triggerPhysicalLunge(toPos);
+    }
+    if (targetMesh) {
+      setTimeout(() => targetMesh.triggerHitShake(), 180);
+    }
+
     let colorHex = 0xff5533;
     if (type === 'Water') colorHex = 0x3b82f6;
     if (type === 'Grass') colorHex = 0x22c55e;
@@ -327,7 +344,6 @@ export class WorldSceneManager {
     if (type === 'Ice') colorHex = 0x67e8f9;
     if (type === 'Dragon') colorHex = 0x6366f1;
 
-    // Glowing energy sphere projectile
     const projGeo = new THREE.SphereGeometry(0.35, 12, 12);
     const projMat = new THREE.MeshBasicMaterial({ color: colorHex });
     const projectileMesh = new THREE.Mesh(projGeo, projMat);
@@ -339,7 +355,7 @@ export class WorldSceneManager {
       startPos: projectileMesh.position.clone(),
       targetPos: toPos.clone().add(new THREE.Vector3(0, 1.0, 0)),
       progress: 0,
-      speed: 3.5, // completes in ~0.28s
+      speed: 3.8,
       color: colorHex,
     });
   }
@@ -411,29 +427,63 @@ export class WorldSceneManager {
       const elapsed = this.clock.getElapsedTime();
       const delta = Math.min(this.clock.getDelta(), 0.1);
 
-      // Pulse arena ring
       if (this.arenaRing) {
         (this.arenaRing.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.sin(elapsed * 2.5) * 0.15;
       }
 
-      // Update 3D Pokémon models & skeletal animations
-      this.playerMeshes.forEach(mesh => mesh.update(elapsed, delta, false, false));
-      this.enemyMeshes.forEach(mesh => mesh.update(elapsed, delta, false, false));
+      // Update free-roam wander motion & 3D attack lunges for all Pokémon
+      this.playerMeshes.forEach(mesh => mesh.update(elapsed, delta));
+      this.enemyMeshes.forEach(mesh => mesh.update(elapsed, delta));
       if (this.buddyMesh) {
-        this.buddyMesh.update(elapsed, delta, true, false);
+        this.buddyMesh.update(elapsed, delta);
       }
 
       // Dynamic cinematic camera sway
-      this.camera.position.x = Math.sin(elapsed * 0.35) * 0.9;
-      this.camera.lookAt(0, 1.0, 0);
+      this.camera.position.x = Math.sin(elapsed * 0.25) * 1.2;
+      this.camera.lookAt(0, 1.2, -1.0);
+
+      // Collect Screen Anchors for In-World Unit HP Bars & Nameplates
+      const anchors: typeof this.unitScreenAnchors = [];
+
+      this.playerMeshes.forEach((mesh, id) => {
+        const topHeadPos = mesh.group.position.clone().add(new THREE.Vector3(0, 2.2, 0));
+        const screenPos = this.projectToScreen(topHeadPos);
+        anchors.push({
+          id,
+          name: mesh.pokemon.speciesName,
+          hpRatio: mesh.pokemon.stats.hp / mesh.pokemon.stats.maxHp,
+          screenPos,
+          isPlayer: true,
+          level: mesh.pokemon.level,
+          tier: mesh.pokemon.prismaticTier,
+        });
+      });
+
+      this.enemyMeshes.forEach((mesh, id) => {
+        const topHeadPos = mesh.group.position.clone().add(new THREE.Vector3(0, 2.2, 0));
+        const screenPos = this.projectToScreen(topHeadPos);
+        anchors.push({
+          id,
+          name: mesh.pokemon.speciesName,
+          hpRatio: mesh.pokemon.stats.hp / mesh.pokemon.stats.maxHp,
+          screenPos,
+          isPlayer: false,
+          level: mesh.pokemon.level,
+          tier: mesh.pokemon.prismaticTier,
+        });
+      });
+
+      this.unitScreenAnchors = anchors;
+      if (this.onUnitAnchorsUpdate) {
+        this.onUnitAnchorsUpdate(anchors);
+      }
 
       // Animate active attack projectiles
       for (let i = this.projectiles.length - 1; i >= 0; i--) {
         const p = this.projectiles[i];
         p.progress += delta * p.speed;
         p.mesh.position.lerpVectors(p.startPos, p.targetPos, p.progress);
-        // Arch trajectory upward
-        p.mesh.position.y += Math.sin(p.progress * Math.PI) * 0.6;
+        p.mesh.position.y += Math.sin(p.progress * Math.PI) * 0.7;
 
         if (p.progress >= 1.0) {
           this.createImpactBurst(p.targetPos, p.color);
@@ -468,7 +518,7 @@ export class WorldSceneManager {
       // Update floating combat numbers
       for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
         const ft = this.floatingTexts[i];
-        ft.worldPos.y += 0.04;
+        ft.worldPos.y += 0.045;
         ft.opacity -= 0.024;
         ft.screenPos = this.projectToScreen(ft.worldPos);
         if (ft.opacity <= 0) {
