@@ -364,14 +364,15 @@ export class WorldSceneManager {
     const animate = () => {
       this.animFrameId = requestAnimationFrame(animate);
       const elapsed = this.clock.getElapsedTime();
+      const delta = this.clock.getDelta();
 
       // Update player pokemon animations
-      this.playerMeshes.forEach(mesh => mesh.update(elapsed, false, false));
+      this.playerMeshes.forEach(mesh => mesh.update(elapsed, delta, false, false));
       // Update enemy pokemon animations
-      this.enemyMeshes.forEach(mesh => mesh.update(elapsed, false, false));
+      this.enemyMeshes.forEach(mesh => mesh.update(elapsed, delta, false, false));
       // Update buddy walking animation
       if (this.buddyMesh) {
-        this.buddyMesh.update(elapsed, true, false);
+        this.buddyMesh.update(elapsed, delta, true, false);
       }
 
       // Camera gentle sway for cinematic dynamism
