@@ -14,6 +14,7 @@ import {
   createPokemonInstanceByDex,
   calculatePokemonStats,
   getPokemonSpriteUrls,
+  calculateTypeMultiplier,
   ASSET_ICONS,
 } from '../data/pokemonCatalog';
 
@@ -32,7 +33,7 @@ export class GameStateManager {
   public prismaticShards: number = 220;
 
   // Regions & Gym Badges
-  public currentRegionIndex: number = 0; // 0 to 8
+  public currentRegionIndex: number = 0;
   public maxUnlockedRegionIndex: number = 0;
 
   // Collection
@@ -46,7 +47,7 @@ export class GameStateManager {
 
   // Squad (5 Slots) & Active Battler Index (Tallgrass 1v1 Format)
   public squad: PokemonData[] = [];
-  public activeBattlerSlot: number = 0; // The single active Pokémon currently on the battlefield
+  public activeBattlerSlot: number = 0;
   public pcBox: PokemonData[] = [];
   
   // Walking Buddy
@@ -72,14 +73,14 @@ export class GameStateManager {
     preferredBall: 'poke',
   };
 
-  // Real Inventory (Using sprite asset icons, zero emojis)
+  // Real Inventory (Official Capture Orbs & Potions)
   public inventory: InventoryItem[] = [
-    { id: 'b1', name: 'Poké Ball', category: 'balls', count: 35, price: 200, description: 'Standard capture device for wild encounters.', icon: ASSET_ICONS.pokeBall },
-    { id: 'b2', name: 'Great Ball', category: 'balls', count: 10, price: 600, description: 'Higher capture rate ball with reinforced casing.', icon: ASSET_ICONS.greatBall },
-    { id: 'b3', name: 'Ultra Ball', category: 'balls', count: 4, price: 1200, description: 'High-performance capture ball.', icon: ASSET_ICONS.ultraBall },
-    { id: 'b4', name: 'Prismatic Sphere', category: 'balls', count: 1, price: 5000, shardPrice: 150, description: 'Guarantees catch on any encounter.', icon: ASSET_ICONS.masterBall },
-    { id: 'p1', name: 'Super Potion', category: 'potions', count: 12, price: 700, description: 'Restores 100 HP to your active battler.', icon: ASSET_ICONS.potion },
-    { id: 'm1', name: 'Prismatic Shard', category: 'materials', count: 15, price: 0, shardPrice: 0, description: 'Rare dimensional material.', icon: ASSET_ICONS.prismaticShard },
+    { id: 'b1', name: 'Capture Orb', category: 'balls', count: 40, price: 200, description: 'Standard capture sphere used to safely secure weakened Pokémon in the Meadow.', icon: ASSET_ICONS.pokeBall, catchMultiplier: 1.0 },
+    { id: 'b2', name: 'Great Orb', category: 'balls', count: 12, price: 600, description: 'Reinforced capture sphere with higher odds.', icon: ASSET_ICONS.greatBall, catchMultiplier: 1.5 },
+    { id: 'b3', name: 'Ultra Orb', category: 'balls', count: 5, price: 1200, description: 'High-performance capture orb designed for difficult catches.', icon: ASSET_ICONS.ultraBall, catchMultiplier: 2.0 },
+    { id: 'b4', name: 'Prism Orb', category: 'balls', count: 1, price: 5000, shardPrice: 150, description: 'Guarantees 100% capture rate on any Pokémon or Prismatic variant.', icon: ASSET_ICONS.masterBall, catchMultiplier: 255.0 },
+    { id: 'p1', name: 'Super Potion', category: 'potions', count: 15, price: 700, description: 'Restores 100 HP to your active battler.', icon: ASSET_ICONS.potion },
+    { id: 'm1', name: 'Prismatic Shard', category: 'materials', count: 18, price: 0, shardPrice: 0, description: 'Rare dimensional material.', icon: ASSET_ICONS.prismaticShard },
   ];
 
   // Real Player Marketplace (Zero bots)
@@ -109,9 +110,12 @@ export class GameStateManager {
   public wildCombatant: Active1v1Combatant | null = null;
   public combatLogs: CombatLogEntry[] = [];
 
-  // Floating Damage Numbers & Combat FX
+  // Floating Combat Numbers & Attack Laser Beams
   public floatingTexts: { id: string; text: string; color: string; x: number; y: number; opacity: number }[] = [];
   public attackBeams: { id: string; fromX: number; fromY: number; toX: number; toY: number; color: string; life: number }[] = [];
+
+  // Selected Throwing Ball for manual capture
+  public selectedThrowingBall: string = 'b1';
 
   // Reactive listeners
   private subscribers: Array<() => void> = [];
@@ -136,12 +140,11 @@ export class GameStateManager {
     };
   }
 
-  private notify() {
+  public notify() {
     this.subscribers.forEach(cb => cb());
   }
 
   private initStarterSquad() {
-    // 5 squad slots (Player starts with Charizard, Pikachu, Blastoise, Venusaur, Lucario)
     const charizard = createPokemonInstanceByDex(6, 15);
     const pikachu = createPokemonInstanceByDex(25, 12);
     const blastoise = createPokemonInstanceByDex(9, 14);
@@ -151,19 +154,16 @@ export class GameStateManager {
     this.squad = [charizard, pikachu, blastoise, venusaur, lucario];
     this.squad.forEach(p => this.pokedexCaught.add(p.dexNumber));
 
-    // Walking buddy: Dex 778 Mimikyu (Shiny)
     this.buddy = createPokemonInstanceByDex(778, 12, 'Shiny');
     this.buddyData.pokemonId = this.buddy.id;
     this.pokedexCaught.add(this.buddy.dexNumber);
 
-    // Initial PC Box specimens
     this.pcBox.push(createPokemonInstanceByDex(133, 10)); // Eevee
     this.pcBox.push(createPokemonInstanceByDex(94, 18, 'Ethereal')); // Gengar
 
     this.init1v1Combatants();
   }
 
-  // Switch active 1v1 battle slot (like clicking in the team bar in Tallgrass)
   public switchActiveBattler(slotIdx: number) {
     if (slotIdx < 0 || slotIdx >= this.squad.length) return;
     this.activeBattlerSlot = slotIdx;
@@ -174,9 +174,9 @@ export class GameStateManager {
       currentHp: active.stats.hp,
       maxHp: active.stats.maxHp,
       x: 22,
-      y: 62,
+      y: 60,
       targetX: 22,
-      targetY: 62,
+      targetY: 60,
       facing: 'right',
       wanderTimer: 2.0,
       lungeX: 0,
@@ -184,7 +184,7 @@ export class GameStateManager {
       attackCooldowns: {},
       lastAttackTimestamp: 0,
     };
-    this.addLog(`Switched out active battler: Go, ${active.speciesName}!`, 'level');
+    this.addLog(`Switched active partner: Go, ${active.speciesName}!`, 'level');
     this.notify();
   }
 
@@ -196,9 +196,9 @@ export class GameStateManager {
       currentHp: active.stats.hp,
       maxHp: active.stats.maxHp,
       x: 22,
-      y: 62,
+      y: 60,
       targetX: 22,
-      targetY: 62,
+      targetY: 60,
       facing: 'right',
       wanderTimer: 2.0,
       lungeX: 0,
@@ -210,7 +210,6 @@ export class GameStateManager {
     this.spawnWildEncounter();
   }
 
-  // Spawn single wild 1v1 opponent across the meadow
   public spawnWildEncounter(forceSupernova: boolean = false) {
     const currentRegion = REGIONS_DATA[this.currentRegionIndex];
     const [minLvl, maxLvl] = currentRegion.levelRange;
@@ -249,7 +248,7 @@ export class GameStateManager {
 
     if (wildPokemon.prismaticTier !== 'Standard') {
       this.addLog(
-        `⚡ A rare wild ${wildPokemon.prismaticTier} ${wildPokemon.speciesName} (Lv. ${wildPokemon.level}) appeared in the Meadow!`,
+        `⚡ A wild ${wildPokemon.prismaticTier} ${wildPokemon.speciesName} (Lv. ${wildPokemon.level}) appeared in the Meadow!`,
         'prismatic'
       );
     }
@@ -297,7 +296,7 @@ export class GameStateManager {
     if (this.playerCombatant) updateUnitMotion(this.playerCombatant, 15, 35);
     if (this.wildCombatant) updateUnitMotion(this.wildCombatant, 65, 82);
 
-    // Update floating damage texts & beams
+    // Update floating damage texts & attack beams
     for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
       const ft = this.floatingTexts[i];
       ft.y -= 0.8;
@@ -315,41 +314,48 @@ export class GameStateManager {
       return;
     }
 
-    // 2. CHECK REVIVE IF PLAYER FAINTED -> Auto-swap to next living pokemon or restore
+    // 2. CHECK REVIVE IF PLAYER FAINTED
     if (this.playerCombatant.currentHp <= 0) {
-      // Find living squad member
       const nextLivingIdx = this.squad.findIndex(p => p.stats.hp > 0 && p.id !== this.playerCombatant?.pokemon.id);
       if (nextLivingIdx !== -1) {
         this.switchActiveBattler(nextLivingIdx);
       } else {
-        // Squad knocked out: Nurse Joy restoration
         this.squad.forEach(p => p.stats.hp = p.stats.maxHp);
         this.switchActiveBattler(0);
         this.addLog('Nurse Joy restored your squad to full health!', 'level');
       }
     }
 
-    // 3. 1v1 COMBAT TURN: Player attack step
-    const pMoves = [...this.playerCombatant.pokemon.moves].sort((a, b) => a.priorityTier - b.priorityTier);
-    const readyPMove = pMoves.find(m => (this.playerCombatant!.attackCooldowns[m.id] || 0) <= 0);
+    // 3. TALLGRASS BATTLE TICK: Player auto-attack or manual trigger
+    // Tallgrass Mechanic: If wild is low HP (<25%), prefer "Gentle Tap" so as NOT to knock it out!
+    const isWildLowHp = this.wildCombatant.currentHp < this.wildCombatant.maxHp * 0.25;
+    const moves = this.playerCombatant.pokemon.moves;
+    
+    let chosenMove = moves.find(m => (this.playerCombatant!.attackCooldowns[m.id] || 0) <= 0);
+    if (isWildLowHp) {
+      const gentle = moves.find(m => m.isGentleTap);
+      if (gentle && (this.playerCombatant.attackCooldowns[gentle.id] || 0) <= 0) {
+        chosenMove = gentle;
+      }
+    }
 
-    pMoves.forEach(m => {
+    moves.forEach(m => {
       const cd = this.playerCombatant!.attackCooldowns[m.id] || 0;
       if (cd > 0) this.playerCombatant!.attackCooldowns[m.id] = Math.max(0, cd - delta);
     });
 
-    if (readyPMove && (now - this.playerCombatant.lastAttackTimestamp) > (readyPMove.cooldown * 650)) {
+    if (chosenMove && (now - this.playerCombatant.lastAttackTimestamp) > (chosenMove.cooldown * 650)) {
       this.playerCombatant.lastAttackTimestamp = now;
-      this.playerCombatant.attackCooldowns[readyPMove.id] = readyPMove.cooldown;
-      this.execute1v1Attack(this.playerCombatant, this.wildCombatant, readyPMove);
+      this.playerCombatant.attackCooldowns[chosenMove.id] = chosenMove.cooldown;
+      this.executeTallgrassMove(this.playerCombatant, this.wildCombatant, chosenMove);
     }
 
-    // 4. Wild Pokemon attack step
-    const wildMove = this.wildCombatant.pokemon.moves[0] || { name: 'Tackle', power: 40, type: 'Normal', cooldown: 2.2 };
+    // 4. Wild Pokemon counter-attack
+    const wildMove = this.wildCombatant.pokemon.moves[1] || this.wildCombatant.pokemon.moves[0];
     const wCd = this.wildCombatant.attackCooldowns['default'] || 0;
     if (wCd <= 0) {
-      this.wildCombatant.attackCooldowns['default'] = 2.2;
-      this.execute1v1Attack(this.wildCombatant, this.playerCombatant, wildMove as Move);
+      this.wildCombatant.attackCooldowns['default'] = 2.4;
+      this.executeTallgrassMove(this.wildCombatant, this.playerCombatant, wildMove as Move);
     } else {
       this.wildCombatant.attackCooldowns['default'] = Math.max(0, wCd - delta);
     }
@@ -387,21 +393,30 @@ export class GameStateManager {
     this.notify();
   }
 
-  private execute1v1Attack(attacker: Active1v1Combatant, target: Active1v1Combatant, move: Move) {
+  // TALLGRASS MOVE EXECUTION (Gentle Tap, Finishing Risk, Type Multiplier)
+  public executeTallgrassMove(attacker: Active1v1Combatant, target: Active1v1Combatant, move: Move) {
     const lvl = attacker.pokemon.level;
     const atk = attacker.pokemon.stats.atk;
     const def = target.pokemon.stats.def;
-    const baseDmg = Math.floor((((2 * lvl / 5 + 2) * move.power * (atk / Math.max(1, def))) / 50) + 2);
+
+    // Type effectiveness multiplier (0x, 0.5x, 1x, 2x, 4x)
+    const typeMult = calculateTypeMultiplier(move.type, target.pokemon.types);
+    const rawDmg = Math.floor(((((2 * lvl / 5 + 2) * move.power * (atk / Math.max(1, def))) / 50) + 2) * typeMult);
     const variance = 0.85 + Math.random() * 0.3;
-    const damage = Math.max(1, Math.floor(baseDmg * variance));
+    let damage = Math.max(1, Math.floor(rawDmg * variance));
+
+    // TALLGRASS GENTLE TAP MECHANIC:
+    // Guarantees leaving target with at least 1 HP, NEVER knocking it out accidentally!
+    if (move.isGentleTap && damage >= target.currentHp) {
+      damage = Math.max(1, target.currentHp - 1);
+    }
 
     target.currentHp = Math.max(0, target.currentHp - damage);
 
-    // Clean, crisp attack animations: forward lunge and target recoil shake
+    // Dynamic animations: forward attack lunge and recoil shake
     attacker.lungeX = attacker.isPlayer ? 14 : -14;
     target.shakeX = attacker.isPlayer ? 8 : -8;
 
-    // Laser beam impact
     const beamColor = move.type === 'Fire' ? '#f97316' : move.type === 'Water' ? '#38bdf8' : move.type === 'Electric' ? '#facc15' : move.type === 'Grass' ? '#4ade80' : '#c084fc';
     this.attackBeams.push({
       id: `beam_${Date.now()}`,
@@ -413,14 +428,25 @@ export class GameStateManager {
       life: 1.0,
     });
 
+    let effectivenessText = '';
+    if (typeMult >= 2.0) effectivenessText = ' (Super effective!)';
+    else if (typeMult <= 0.5 && typeMult > 0) effectivenessText = ' (Not very effective)';
+    else if (typeMult === 0) effectivenessText = ' (No effect!)';
+
     this.floatingTexts.push({
       id: `dmg_${Date.now()}_${Math.random()}`,
-      text: `-${damage}`,
-      color: attacker.isPlayer ? '#ef4444' : '#f97316',
+      text: `-${damage}${typeMult >= 2.0 ? '!' : ''}`,
+      color: typeMult >= 2.0 ? '#fbbf24' : attacker.isPlayer ? '#ef4444' : '#f97316',
       x: target.x,
       y: target.y - 8,
       opacity: 1.0,
     });
+
+    if (move.isGentleTap) {
+      this.addLog(`✨ ${attacker.pokemon.speciesName} used Gentle Tap! Target weakened safely to ${target.currentHp} HP.`, 'level');
+    } else {
+      this.addLog(`${attacker.pokemon.speciesName} used ${move.name}${effectivenessText}! Dealt ${damage} DMG.`, 'damage');
+    }
 
     if (target.currentHp <= 0) {
       if (attacker.isPlayer) {
@@ -428,15 +454,26 @@ export class GameStateManager {
         this.addLog(`${attacker.pokemon.speciesName} fainted wild ${target.pokemon.speciesName}!`, 'faint');
       }
     }
+    this.notify();
   }
 
-  // Manual Ball Throw
-  public manualThrowBall(ballId: string = 'b1') {
+  // TALLGRASS CAPTURE MECHANIC
+  public throwCaptureOrb(ballId?: string) {
     if (!this.wildCombatant || this.wildCombatant.currentHp <= 0) return;
-    const ballItem = this.inventory.find(i => i.id === ballId && i.count > 0);
+    const targetBallId = ballId || this.selectedThrowingBall || 'b1';
+    const ballItem = this.inventory.find(i => i.id === targetBallId && i.count > 0);
     if (!ballItem) return;
 
     this.attemptCatch(this.wildCombatant, ballItem);
+  }
+
+  // Calculate catch odds (HP percentage + Capture Orb multiplier)
+  public calculateCatchOdds(enemy: Active1v1Combatant, ballMultiplier: number = 1.0): number {
+    if (ballMultiplier >= 255.0) return 100;
+    const hpFactor = 1 - (enemy.currentHp / enemy.maxHp);
+    const baseRate = 0.35 + (hpFactor * 0.55); // 35% base up to 90% when target is at 1 HP
+    const finalRate = Math.min(0.98, baseRate * (ballMultiplier / 1.0));
+    return Math.floor(finalRate * 100);
   }
 
   private attemptCatch(enemy: Active1v1Combatant, specificBall?: InventoryItem) {
@@ -449,11 +486,10 @@ export class GameStateManager {
     if (!ballItem || ballItem.count <= 0) return;
     ballItem.count--;
 
-    const isMaster = ballItem.id === 'b4';
-    const hpFactor = 1 - (enemy.currentHp / enemy.maxHp);
-    const catchRate = isMaster ? 1.0 : (0.4 + hpFactor * 0.55);
+    const multiplier = ballItem.catchMultiplier || 1.0;
+    const oddsPercent = this.calculateCatchOdds(enemy, multiplier);
 
-    if (Math.random() < catchRate) {
+    if (Math.random() * 100 < oddsPercent) {
       this.pokedexCaught.add(enemy.pokemon.dexNumber);
       this.pcBox.push(enemy.pokemon);
 
@@ -503,7 +539,6 @@ export class GameStateManager {
     this.activeRaid.currentHp = Math.max(0, this.activeRaid.currentHp - dmg);
     this.activeRaid.totalDamageDealt += dmg;
 
-    // Real economy rewards
     const goldEarned = Math.floor(dmg * 0.15);
     const shardsEarned = Math.floor(dmg * 0.005);
     this.pokeDollars += goldEarned;

@@ -9,7 +9,7 @@ export interface PokemonSpeciesEntry {
 
 export const ALL_POKEMON_ENTRIES: PokemonSpeciesEntry[] = allPokemonRaw as PokemonSpeciesEntry[];
 
-// SVG Icons & Sprite URLs for items, balls, and badges (No emojis!)
+// SVG Icons & Sprite URLs for items, balls, and badges (Pure asset sprites, zero emojis)
 export const ASSET_ICONS = {
   pokeBall: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png',
   greatBall: 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/great-ball.png',
@@ -30,7 +30,7 @@ export function getPokemonSpriteUrls(dex: number, tier: PrismaticTier = 'Standar
   return { sprite, artwork };
 }
 
-// Custom CSS Filters & SVGs for the Custom Prismatic Variant Sprites
+// Custom CSS Filters for the Custom Prismatic Variant Sprites
 export function getPrismaticSpriteStyle(tier: PrismaticTier): {
   filterStyle: string;
   badgeClass: string;
@@ -39,7 +39,6 @@ export function getPrismaticSpriteStyle(tier: PrismaticTier): {
 } {
   switch (tier) {
     case 'Supernova':
-      // Obsidian shell with fiery incandescent molten solar corona
       return {
         filterStyle: 'brightness(0.85) contrast(1.7) saturate(2.4) hue-rotate(335deg) drop-shadow(0 0 10px #f59e0b) drop-shadow(0 0 18px #ea580c)',
         badgeClass: 'bg-amber-950/80 text-amber-300 border border-amber-500/70 shadow-lg shadow-amber-950/50',
@@ -47,7 +46,6 @@ export function getPrismaticSpriteStyle(tier: PrismaticTier): {
         label: 'Supernova (1/65,536)',
       };
     case 'Ethereal':
-      // Translucent cosmic crystal starfield glow
       return {
         filterStyle: 'brightness(1.25) contrast(1.3) saturate(1.8) hue-rotate(180deg) drop-shadow(0 0 8px #06b6d4) drop-shadow(0 0 16px #3b82f6)',
         badgeClass: 'bg-cyan-950/80 text-cyan-300 border border-cyan-500/70 shadow-lg shadow-cyan-950/50',
@@ -55,7 +53,6 @@ export function getPrismaticSpriteStyle(tier: PrismaticTier): {
         label: 'Ethereal (1/32,768)',
       };
     case 'Radiant':
-      // Neon color-shifted celestial aura
       return {
         filterStyle: 'brightness(1.15) contrast(1.5) saturate(2.0) hue-rotate(95deg) drop-shadow(0 0 8px #10b981) drop-shadow(0 0 14px #ec4899)',
         badgeClass: 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/70 shadow-lg shadow-emerald-950/50',
@@ -77,6 +74,37 @@ export function getPrismaticSpriteStyle(tier: PrismaticTier): {
         label: 'Standard',
       };
   }
+}
+
+// Tallgrass / Pokemon Official Type Effectiveness Matrix
+export const TYPE_CHART: Record<ElementalType, Partial<Record<ElementalType, number>>> = {
+  Normal: { Rock: 0.5, Ghost: 0, Steel: 0.5 },
+  Fire: { Fire: 0.5, Water: 0.5, Grass: 2.0, Ice: 2.0, Bug: 2.0, Rock: 0.5, Dragon: 0.5, Steel: 2.0 },
+  Water: { Fire: 2.0, Water: 0.5, Grass: 0.5, Ground: 2.0, Rock: 2.0, Dragon: 0.5 },
+  Grass: { Fire: 0.5, Water: 2.0, Grass: 0.5, Poison: 0.5, Ground: 2.0, Flying: 0.5, Bug: 0.5, Rock: 2.0, Dragon: 0.5, Steel: 0.5 },
+  Electric: { Water: 2.0, Grass: 0.5, Electric: 0.5, Ground: 0, Flying: 2.0, Dragon: 0.5 },
+  Ice: { Fire: 0.5, Water: 0.5, Grass: 2.0, Ice: 0.5, Ground: 2.0, Flying: 2.0, Dragon: 2.0, Steel: 0.5 },
+  Fighting: { Normal: 2.0, Ice: 2.0, Poison: 0.5, Flying: 0.5, Psychic: 0.5, Bug: 0.5, Rock: 2.0, Ghost: 0, Dark: 2.0, Steel: 2.0, Fairy: 0.5 },
+  Poison: { Grass: 2.0, Poison: 0.5, Ground: 0.5, Rock: 0.5, Ghost: 0.5, Steel: 0, Fairy: 2.0 },
+  Ground: { Fire: 2.0, Grass: 0.5, Electric: 2.0, Poison: 2.0, Flying: 0, Bug: 0.5, Rock: 2.0, Steel: 2.0 },
+  Flying: { Grass: 2.0, Electric: 0.5, Fighting: 2.0, Bug: 2.0, Rock: 0.5, Steel: 0.5 },
+  Psychic: { Fighting: 2.0, Poison: 2.0, Psychic: 0.5, Dark: 0, Steel: 0.5 },
+  Bug: { Fire: 0.5, Grass: 2.0, Fighting: 0.5, Poison: 0.5, Flying: 0.5, Psychic: 2.0, Ghost: 0.5, Dark: 2.0, Steel: 0.5, Fairy: 0.5 },
+  Rock: { Fire: 2.0, Ice: 2.0, Fighting: 0.5, Ground: 0.5, Flying: 2.0, Bug: 2.0, Steel: 0.5 },
+  Ghost: { Normal: 0, Psychic: 2.0, Ghost: 2.0, Dark: 0.5 },
+  Dragon: { Dragon: 2.0, Steel: 0.5, Fairy: 0 },
+  Steel: { Fire: 0.5, Water: 0.5, Electric: 0.5, Ice: 2.0, Rock: 2.0, Steel: 0.5, Fairy: 2.0 },
+  Fairy: { Fire: 0.5, Fighting: 2.0, Poison: 0.5, Dragon: 2.0, Dark: 2.0, Steel: 0.5 },
+  Dark: { Fighting: 0.5, Psychic: 2.0, Ghost: 2.0, Dark: 0.5, Fairy: 0.5 },
+};
+
+export function calculateTypeMultiplier(moveType: ElementalType, targetTypes: ElementalType[]): number {
+  let mult = 1.0;
+  targetTypes.forEach(t => {
+    const val = TYPE_CHART[moveType]?.[t];
+    if (val !== undefined) mult *= val;
+  });
+  return mult;
 }
 
 export const TYPE_PALETTES: Record<ElementalType, { primary: string; secondary: string; accent: string }> = {
@@ -158,35 +186,49 @@ export function rollPrismaticTier(bonusResonance = 0): PrismaticTier {
   return 'Standard';
 }
 
+// Official Tallgrass Move Templates + Signature "Gentle Tap" Mechanic
+export const GENTLE_TAP_MOVE: Move = {
+  id: 'm_gentle_tap',
+  name: 'Gentle Tap',
+  type: 'Normal',
+  power: 20,
+  accuracy: 100,
+  cooldown: 1.0,
+  isGentleTap: true,
+  description: 'A gentle attack that weakens wild Pokémon but ALWAYS leaves at least 1 HP to ensure a safe capture!',
+};
+
 export const SAMPLE_MOVES: Record<string, Move> = {
-  tackle: { id: 'm1', name: 'Tackle', type: 'Normal', power: 40, cooldown: 1.5, priorityTier: 3, description: 'A physical charge attack.' },
-  flamethrower: { id: 'm2', name: 'Flamethrower', type: 'Fire', power: 90, cooldown: 3.5, priorityTier: 1, effect: 'burn', description: 'Intense blast of fire.' },
-  hydropump: { id: 'm3', name: 'Hydro Pump', type: 'Water', power: 110, cooldown: 4.5, priorityTier: 1, description: 'High-pressure water cannon.' },
-  solarbeam: { id: 'm4', name: 'Solar Beam', type: 'Grass', power: 120, cooldown: 5.0, priorityTier: 1, description: 'Condensed sunlight energy beam.' },
-  thunderbolt: { id: 'm5', name: 'Thunderbolt', type: 'Electric', power: 90, cooldown: 3.5, priorityTier: 1, effect: 'stun', description: 'Powerful shock with stun chance.' },
-  dragonclaw: { id: 'm6', name: 'Dragon Claw', type: 'Dragon', power: 80, cooldown: 2.8, priorityTier: 2, description: 'Sharp claws slash through targets.' },
-  shadowball: { id: 'm7', name: 'Shadow Ball', type: 'Ghost', power: 80, cooldown: 3.0, priorityTier: 2, description: 'Dark shadowy sphere.' },
-  psychic: { id: 'm8', name: 'Psychic', type: 'Psychic', power: 90, cooldown: 3.2, priorityTier: 1, description: 'Strong telekinetic wave.' },
-  icebeam: { id: 'm9', name: 'Ice Beam', type: 'Ice', power: 90, cooldown: 3.8, priorityTier: 1, effect: 'freeze', description: 'Freezing ray.' },
-  earthquake: { id: 'm10', name: 'Earthquake', type: 'Ground', power: 100, cooldown: 4.2, priorityTier: 1, effect: 'aoe', description: 'Massive tremors.' },
-  moonblast: { id: 'm11', name: 'Moonblast', type: 'Fairy', power: 95, cooldown: 3.6, priorityTier: 1, description: 'Borrowing the power of the moon.' },
-  aurasphere: { id: 'm12', name: 'Aura Sphere', type: 'Fighting', power: 80, cooldown: 2.5, priorityTier: 2, description: 'Pure inner aura blast.' },
+  tackle: { id: 'm1', name: 'Tackle', type: 'Normal', power: 40, accuracy: 100, cooldown: 1.5, description: 'A physical charge attack.' },
+  flamethrower: { id: 'm2', name: 'Flamethrower', type: 'Fire', power: 90, accuracy: 100, cooldown: 3.2, description: 'Intense blast of fire with burn potential.' },
+  hydropump: { id: 'm3', name: 'Hydro Pump', type: 'Water', power: 110, accuracy: 80, cooldown: 4.2, description: 'High-pressure water cannon.' },
+  solarbeam: { id: 'm4', name: 'Solar Beam', type: 'Grass', power: 120, accuracy: 100, cooldown: 4.8, description: 'Condensed sunlight energy beam.' },
+  thunderbolt: { id: 'm5', name: 'Thunderbolt', type: 'Electric', power: 90, accuracy: 100, cooldown: 3.2, description: 'Powerful shock with stun potential.' },
+  dragonclaw: { id: 'm6', name: 'Dragon Claw', type: 'Dragon', power: 80, accuracy: 100, cooldown: 2.8, description: 'Sharp claws slash through targets.' },
+  shadowball: { id: 'm7', name: 'Shadow Ball', type: 'Ghost', power: 80, accuracy: 100, cooldown: 3.0, description: 'Dark shadowy sphere.' },
+  psychic: { id: 'm8', name: 'Psychic', type: 'Psychic', power: 90, accuracy: 100, cooldown: 3.2, description: 'Strong telekinetic wave.' },
+  icebeam: { id: 'm9', name: 'Ice Beam', type: 'Ice', power: 90, accuracy: 100, cooldown: 3.6, description: 'Freezing ray.' },
+  earthquake: { id: 'm10', name: 'Earthquake', type: 'Ground', power: 100, accuracy: 100, cooldown: 4.0, description: 'Massive tremors.' },
+  moonblast: { id: 'm11', name: 'Moonblast', type: 'Fairy', power: 95, accuracy: 100, cooldown: 3.5, description: 'Borrowing the power of the moon.' },
+  aurasphere: { id: 'm12', name: 'Aura Sphere', type: 'Fighting', power: 80, accuracy: 100, cooldown: 2.5, description: 'Pure inner aura blast.' },
 };
 
 export function getMovesForType(type: ElementalType): Move[] {
+  // Always include Gentle Tap as slot #1 for Tallgrass catching mechanics
+  const gentle = { ...GENTLE_TAP_MOVE };
   switch (type) {
-    case 'Fire': return [SAMPLE_MOVES.flamethrower, SAMPLE_MOVES.tackle];
-    case 'Water': return [SAMPLE_MOVES.hydropump, SAMPLE_MOVES.tackle];
-    case 'Grass': return [SAMPLE_MOVES.solarbeam, SAMPLE_MOVES.tackle];
-    case 'Electric': return [SAMPLE_MOVES.thunderbolt, SAMPLE_MOVES.tackle];
-    case 'Ice': return [SAMPLE_MOVES.icebeam, SAMPLE_MOVES.tackle];
-    case 'Fighting': return [SAMPLE_MOVES.aurasphere, SAMPLE_MOVES.tackle];
-    case 'Ghost': return [SAMPLE_MOVES.shadowball, SAMPLE_MOVES.tackle];
-    case 'Dragon': return [SAMPLE_MOVES.dragonclaw, SAMPLE_MOVES.flamethrower];
-    case 'Psychic': return [SAMPLE_MOVES.psychic, SAMPLE_MOVES.shadowball];
-    case 'Fairy': return [SAMPLE_MOVES.moonblast, SAMPLE_MOVES.psychic];
-    case 'Ground': return [SAMPLE_MOVES.earthquake, SAMPLE_MOVES.tackle];
-    default: return [SAMPLE_MOVES.tackle, SAMPLE_MOVES.dragonclaw];
+    case 'Fire': return [gentle, SAMPLE_MOVES.flamethrower, SAMPLE_MOVES.tackle];
+    case 'Water': return [gentle, SAMPLE_MOVES.hydropump, SAMPLE_MOVES.tackle];
+    case 'Grass': return [gentle, SAMPLE_MOVES.solarbeam, SAMPLE_MOVES.tackle];
+    case 'Electric': return [gentle, SAMPLE_MOVES.thunderbolt, SAMPLE_MOVES.tackle];
+    case 'Ice': return [gentle, SAMPLE_MOVES.icebeam, SAMPLE_MOVES.tackle];
+    case 'Fighting': return [gentle, SAMPLE_MOVES.aurasphere, SAMPLE_MOVES.tackle];
+    case 'Ghost': return [gentle, SAMPLE_MOVES.shadowball, SAMPLE_MOVES.tackle];
+    case 'Dragon': return [gentle, SAMPLE_MOVES.dragonclaw, SAMPLE_MOVES.flamethrower];
+    case 'Psychic': return [gentle, SAMPLE_MOVES.psychic, SAMPLE_MOVES.shadowball];
+    case 'Fairy': return [gentle, SAMPLE_MOVES.moonblast, SAMPLE_MOVES.psychic];
+    case 'Ground': return [gentle, SAMPLE_MOVES.earthquake, SAMPLE_MOVES.tackle];
+    default: return [gentle, SAMPLE_MOVES.tackle, SAMPLE_MOVES.dragonclaw];
   }
 }
 

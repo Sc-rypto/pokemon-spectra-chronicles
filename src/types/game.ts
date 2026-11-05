@@ -1,4 +1,4 @@
-// Clean 1v1 Battle and Meadow Types for Pokémon: Spectra Chronicles
+// Tallgrass 1v1 Battle Mechanics & Data Types
 
 export type PrismaticTier = 'Standard' | 'Shiny' | 'Radiant' | 'Ethereal' | 'Supernova';
 
@@ -12,9 +12,10 @@ export interface Move {
   name: string;
   type: ElementalType;
   power: number;
+  accuracy: number; // e.g. 100
   cooldown: number; // in seconds
-  priorityTier: 1 | 2 | 3; // 1 = High, 2 = Mid, 3 = Low
-  effect?: 'burn' | 'freeze' | 'stun' | 'heal' | 'aoe' | 'buff_atk';
+  isGentleTap?: boolean; // Tallgrass Mechanic: Never KOs target, always leaves at least 1 HP!
+  isFinishingRisk?: boolean; // Tallgrass Flag: warns player this attack risks knocking out target
   description: string;
 }
 
@@ -73,21 +74,20 @@ export interface PokemonData {
   artworkUrl: string;
 }
 
-// 1v1 Arena Active Combatant
+// 1v1 Meadow Active Combatant (Tallgrass Battle State)
 export interface Active1v1Combatant {
   pokemon: PokemonData;
   isPlayer: boolean;
   currentHp: number;
   maxHp: number;
-  // Position % in the battle frame
   x: number;
   y: number;
   targetX: number;
   targetY: number;
   facing: 'left' | 'right';
   wanderTimer: number;
-  lungeX: number; // Attack jump offset
-  shakeX: number; // Hit reaction offset
+  lungeX: number;
+  shakeX: number;
   attackCooldowns: Record<string, number>;
   lastAttackTimestamp: number;
 }
@@ -148,6 +148,7 @@ export interface InventoryItem {
   shardPrice?: number;
   description: string;
   icon: string;
+  catchMultiplier?: number;
 }
 
 export interface MarketListing {
