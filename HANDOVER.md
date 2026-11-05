@@ -1,71 +1,65 @@
-# Pokémon: Spectra Chronicles — System Architecture & Handover Guide
+# Pokémon: Spectra Chronicles — Full Architecture & Operational Reference
 
-## 1. Overview
-**Pokémon: Spectra Chronicles** is an original continuous 3D WebGL auto-battler RPG inspired by titles like *Tallgrass*. It renders non-stop real-time battles in a 3D WebGL viewport (Three.js) overlaid with a responsive, modern app-style bottom dock and interactive drawers.
+## 1. Project Overview & Inspiration
+**Pokémon: Spectra Chronicles** is a web-based continuous auto-battler RPG inspired directly by **Tallgrass** (`playtallgrass.com`), **DelugeRPG**, and **PokéIdle**. It combines 1v1 battle spaces, procedural Prismatic shader variants, player-driven economy systems, and progression across all 9 regions (Kanto through Paldea, covering all 1,025 Pokémon).
 
 ---
 
-## 2. File & Directory Layout
+## 2. Architecture & File Layout
 ```
-pokemon spectra chronicles/
-├── src/
-│   ├── types/
-│   │   └── game.ts                 # Core interfaces (PokemonData, IVs/EVs, Shaders, Combatants, Raids)
-│   ├── data/
-│   │   └── pokemonCatalog.ts       # Gen 1-9 Species catalog, stat calculation formulas, 9-region metadata
-│   ├── engine/
-│   │   ├── ProceduralPokemonMesh.ts # Procedural 3D Pokémon archetypes & particle aura generator
-│   │   ├── WorldSceneManager.ts    # Three.js 3D viewport, camera sway, dynamic lighting & floating combat text
-│   │   └── shaders/
-│   │       └── prismaticShaders.ts # GLSL shaders for Standard, Shiny, Radiant, Ethereal, and Supernova tiers
-│   ├── state/
-│   │   └── GameStateManager.ts     # Global singleton: continuous 100ms combat loop, auto-catch, level-caps
-│   ├── components/
-│   │   ├── CanvasViewport.tsx      # WebGL container + 2D floating damage text projection overlay
-│   │   ├── navigation/
-│   │   │   └── BottomDock.tsx      # Persistent bottom dock navbar with collapsible state
-│   │   └── drawers/
-│   │       ├── BattleTab.tsx       # Live combat stream, rules engine & "Summon Supernova" button
-│   │       ├── SquadBuddyTab.tsx   # 5-slot lineup, IV/EV matrix, move priority config & buddy passives
-│   │       ├── WorldTab.tsx        # 9-Region continuum (Lv. 1-900) & Gym Leader badge unlocks
-│   │       ├── ShopTab.tsx         # PokéMart & Prismatic Shard Bazaar
-│   │       └── SocialHubTab.tsx    # GTS auction house, Wonder Trade Rift, 4-player Raid, Leaderboards
-│   ├── App.tsx                     # Main application layout coordinating 3D scene & UI drawers
-│   └── main.tsx                    # React 19 entrypoint
+src/
+├── types/
+│   └── game.ts                # TypeScript interfaces (PokemonData, 1v1 Combatants, Prismatic Tiers, Raids)
+├── data/
+│   ├── allPokemonMeta.json    # Complete index of all 1,025 Pokemon across Gen 1-9
+│   └── pokemonCatalog.ts      # Region maps, Gym Leaders, stat formulas, sprite loaders & item assets
+├── state/
+│   └── GameStateManager.ts    # Global game loop: 1v1 combat, XP scaling (Lv. 1-900), economy & auto-catch
+├── services/
+│   └── PokeApiService.ts      # PokeAPI integration for stats, types, moves, weight & heights
+├── components/
+│   ├── MeadowBattlefield.tsx  # Tallgrass 1v1 Meadow battle space with custom Prismatic sprites
+│   ├── navigation/
+│   │   └── BottomDock.tsx     # Fixed, non-collapsing navbar with integrated squad selector strip
+│   └── drawers/
+│       ├── BattleTab.tsx      # Auto-hunt rules engine & "Summon Supernova (Demo)" trigger
+│       ├── SquadBuddyTab.tsx  # Team inspection, continuous IV/EV scaling matrix & Buddy passives
+│       ├── WorldTab.tsx       # 9-Region continuum (Lv. 1-900) & Gym badge cap unlocks
+│       ├── ShopTab.tsx        # Real PokeMart & Prismatic Bazaar
+│       └── SocialHubTab.tsx   # Playable Overworld Raid Boss & real player marketplace (no bots)
+├── App.tsx                    # Root layout mounting Meadow & non-collapsing views
+└── main.tsx                   # React 19 bootstrap
 ```
 
 ---
 
-## 3. Key Systems & Mechanics Implemented
+## 3. Core Systems & Technical Implementations
 
-### 1. Continuous Auto-Combat Engine (`GameStateManager.ts`)
-- Runs continuously at 10 ticks per second (100ms intervals).
-- Real-time move cooldowns and priority tiers (Tier 1 High, Tier 2 Mid, Tier 3 Low).
-- Continuous Stat Scaling Formula:
-  $$\text{Scaled Stat} = \left\lfloor\left(\frac{2 \times \text{Base} + \text{IV} + \lfloor\frac{\text{EV}}{4}\rfloor}{100} \times \text{Level}\right)\right\rfloor + 10$$
-- Region Level Cap Lock: XP locks at local undefeated Gym Leader level thresholds until beaten.
+### 1. Tallgrass 1v1 Meadow Battle Space ([`MeadowBattlefield.tsx`](file:///c:/Users/hrish/Downloads/pokemon%20spectra%20chronicles/src/components/MeadowBattlefield.tsx))
+- **1-by-1 Combat Format:** You deploy exactly 1 active Pokémon from your 5-member squad onto the battlefield at a time against 1 wild opponent, with zero clumping or overlapping.
+- **Fixed Team Selector Strip:** The bottom dock features a live team bar where you can click any of your 5 Pokémon to immediately swap them into battle.
+- **Clean Attack Animations:** Units perform physical lunges forward during strikes, followed by directional recoil hit shakes, laser beam trajectories, and floating damage numbers.
+- **Click-to-Catch:** Tap the wild opponent directly on the meadow or use the header capture button.
 
-### 2. Prismatic Color Shaders (`prismaticShaders.ts`)
-- **Radiant (1/16,384):** Inverted/neon color-shift palette with pulsating wave & celestial aura particles.
-- **Ethereal (1/32,768):** Translucent procedural galaxy/crystal starfield shader.
-- **Supernova (1/65,536):** Obsidian & gold flame corona shader with vertex displacement and flame noise.
-- **Test Trigger:** A dedicated **"Summon Supernova (Demo)"** button is present in the `⚔️ Battle` tab to instantly summon a wild Supernova entity onto the battlefield!
+### 2. Custom Prismatic Variant Sprites ([`pokemonCatalog.ts`](file:///c:/Users/hrish/Downloads/pokemon%20spectra%20chronicles/src/data/pokemonCatalog.ts))
+- **Custom Shaders & CSS Filters:**
+  - **Supernova (1/65,536):** Dark obsidian body with molten solar corona amber flares (`filter: brightness(0.85) contrast(1.7) saturate(2.4) hue-rotate(335deg) drop-shadow(0 0 10px #f59e0b) drop-shadow(0 0 18px #ea580c)`).
+  - **Ethereal (1/32,768):** Translucent cosmic crystal starfield glow (`filter: brightness(1.25) contrast(1.3) saturate(1.8) hue-rotate(180deg) drop-shadow(0 0 8px #06b6d4) drop-shadow(0 0 16px #3b82f6)`).
+  - **Radiant (1/16,384):** Inverted neon color-shift celestial halo (`filter: brightness(1.15) contrast(1.5) saturate(2.0) hue-rotate(95deg) drop-shadow(0 0 8px #10b981) drop-shadow(0 0 14px #ec4899)`).
+  - **Shiny (1/4,096):** Authentic shiny colorway with golden sparkle brilliance.
 
-### 3. Buddy & Auto-Catch Rules Engine
-- Walking buddy stands alongside the trainer behind the squad in the 3D scene.
-- Upgradeable passive branches: *Prismatic Resonance*, *Auto-Dowsing*, and *Gold Hoarder*.
-- Conditional auto-catch criteria: ball inventory management, Prismatic-only targeting, and uncollected dex catching.
+### 3. Pure Asset Sprites & Zero Emojis
+- All emojis have been eliminated and replaced with high-resolution official asset sprites:
+  - Poké Ball, Great Ball, Ultra Ball, Master Ball, Super Potion, Prismatic Scales/Shards, Gym Badges, and Amulet Coins.
 
-### 4. Social & Multiplayer Systems
-- **GTS:** Searchable network listings filterable by price and Prismatic Tier.
-- **Wonder Trade Rift:** Interactive mystery trade portal transmitting specimens across dimensional rifts.
-- **Co-Op Raids:** Real-time 4-player cooperative raid against scaling Cosmic bosses.
+### 4. Playable Overworld Raid & Player Economy ([`SocialHubTab.tsx`](file:///c:/Users/hrish/Downloads/pokemon%20spectra%20chronicles/src/components/drawers/SocialHubTab.tsx))
+- **Interactive 150,000 HP Mega-Mewtwo Raid:** Directly playable on screen. Striking the boss yields live Poké-Dollars and Prismatic Shards, with a +5,000 Shard jackpot upon defeat.
+- **Player Marketplace (Zero Bots):** All simulated bot listings were purged. The market displays only verified listings created by players from their PC Box.
 
 ---
 
-## 4. How to Run Locally
-Run the development server:
-```bash
-npm run dev
-```
-Open the printed local URL (typically `http://localhost:5173/`).
+## 4. Deployment Instructions
+The application is hosted on GitHub Pages:
+- **Repository:** `https://github.com/Sc-rypto/pokemon-spectra-chronicles.git`
+- **Main Branch:** Up to date with latest commit `6050066`.
+- **Live URL:** `https://sc-rypto.github.io/pokemon-spectra-chronicles/`
