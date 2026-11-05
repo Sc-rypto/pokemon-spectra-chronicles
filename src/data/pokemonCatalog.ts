@@ -1,7 +1,51 @@
-import { PokemonData, PokemonIVs, PokemonEVs, PokemonStats, PrismaticTier, RegionInfo, Move } from '../types/game';
+import { PokemonData, PokemonIVs, PokemonEVs, PokemonStats, PrismaticTier, RegionInfo, Move, ElementalType } from '../types/game';
+import allPokemonRaw from './allPokemonMeta.json';
 
-// Stat Calculation Formula:
-// Scaled Stat = (((2 * Base + IV + (EV/4)) / 100) * Level) + 10 (with HP having + Level + 10)
+export interface PokemonSpeciesEntry {
+  dex: number;
+  name: string;
+  gen: number;
+}
+
+export const ALL_POKEMON_ENTRIES: PokemonSpeciesEntry[] = allPokemonRaw as PokemonSpeciesEntry[];
+
+// Elemental color lookup table
+export const TYPE_PALETTES: Record<ElementalType, { primary: string; secondary: string; accent: string }> = {
+  Fire: { primary: '#e06020', secondary: '#f8d030', accent: '#ff4500' },
+  Water: { primary: '#3878d8', secondary: '#6890f0', accent: '#00d2ff' },
+  Grass: { primary: '#48a890', secondary: '#78c850', accent: '#a0e575' },
+  Electric: { primary: '#ffd820', secondary: '#f8d030', accent: '#fffa65' },
+  Ice: { primary: '#98d8d8', secondary: '#e0f8f8', accent: '#70d6ff' },
+  Fighting: { primary: '#c03028', secondary: '#7f1d1d', accent: '#ff6b6b' },
+  Poison: { primary: '#a040a0', secondary: '#c183c1', accent: '#e056fd' },
+  Ground: { primary: '#e0c068', secondary: '#d4a373', accent: '#b08968' },
+  Flying: { primary: '#a890f0', secondary: '#c6b7f5', accent: '#e0aaff' },
+  Psychic: { primary: '#f85888', secondary: '#fa92b2', accent: '#ff70a6' },
+  Bug: { primary: '#a8b820', secondary: '#c6d16e', accent: '#d4e09b' },
+  Rock: { primary: '#b8a038', secondary: '#d1c17d', accent: '#9c6644' },
+  Ghost: { primary: '#705898', secondary: '#493963', accent: '#9d4edd' },
+  Dragon: { primary: '#7038f8', secondary: '#4c08e6', accent: '#7b2cbf' },
+  Steel: { primary: '#b8b8d0', secondary: '#9292a8', accent: '#e2eafc' },
+  Fairy: { primary: '#ee99ac', secondary: '#f4bdc9', accent: '#ffccd5' },
+  Dark: { primary: '#705848', secondary: '#48392f', accent: '#212529' },
+  Normal: { primary: '#a8a878', secondary: '#c6c6a7', accent: '#e9edc9' },
+};
+
+// Deterministic type assignment for all 1025 Pokémon based on dex number
+export function getTypesForDex(dex: number): [ElementalType] | [ElementalType, ElementalType] {
+  const typeCycle: ElementalType[] = [
+    'Grass', 'Fire', 'Water', 'Bug', 'Normal', 'Flying', 'Poison', 'Electric', 
+    'Ground', 'Fairy', 'Fighting', 'Psychic', 'Rock', 'Steel', 'Ice', 'Ghost', 'Dragon', 'Dark'
+  ];
+  const primary = typeCycle[(dex * 7) % typeCycle.length];
+  if (dex % 3 === 0) {
+    const secondary = typeCycle[(dex * 13) % typeCycle.length];
+    if (secondary !== primary) return [primary, secondary];
+  }
+  return [primary];
+}
+
+// Stat Calculation Formula
 export function calculatePokemonStats(
   base: { hp: number; atk: number; def: number; spa: number; spd: number; spe: number },
   ivs: PokemonIVs,
@@ -37,263 +81,95 @@ export function generateRandomIVs(): PokemonIVs {
 }
 
 export function rollPrismaticTier(bonusResonance = 0): PrismaticTier {
-  // Base rates:
-  // Supernova: 1 / 65536
-  // Ethereal: 1 / 32768
-  // Radiant: 1 / 16384
-  // Shiny: 1 / 4096
-  // Standard: rest
-  // With resonance bonus, multipliers apply
-  const mult = 1 + bonusResonance * 0.5; // up to 3x rate
+  const mult = 1 + bonusResonance * 0.5;
   const roll = Math.random();
 
-  if (roll < (1 / 65536) * mult * 20) return 'Supernova'; // boost slightly so gameplay showcases it reliably!
-  if (roll < (1 / 32768) * mult * 25) return 'Ethereal';
-  if (roll < (1 / 16384) * mult * 30) return 'Radiant';
-  if (roll < (1 / 4096) * mult * 40) return 'Shiny';
+  if (roll < (1 / 65536) * mult * 25) return 'Supernova';
+  if (roll < (1 / 32768) * mult * 35) return 'Ethereal';
+  if (roll < (1 / 16384) * mult * 45) return 'Radiant';
+  if (roll < (1 / 4096) * mult * 60) return 'Shiny';
   return 'Standard';
 }
 
 export const SAMPLE_MOVES: Record<string, Move> = {
   tackle: { id: 'm1', name: 'Tackle', type: 'Normal', power: 40, cooldown: 1.5, priorityTier: 3, description: 'A physical charge attack.' },
-  flamethrower: { id: 'm2', name: 'Flamethrower', type: 'Fire', power: 90, cooldown: 3.5, priorityTier: 1, effect: 'burn', description: 'Intense blast of fire with 25% burn chance.' },
+  flamethrower: { id: 'm2', name: 'Flamethrower', type: 'Fire', power: 90, cooldown: 3.5, priorityTier: 1, effect: 'burn', description: 'Intense blast of fire.' },
   hydropump: { id: 'm3', name: 'Hydro Pump', type: 'Water', power: 110, cooldown: 4.5, priorityTier: 1, description: 'High-pressure water cannon.' },
   solarbeam: { id: 'm4', name: 'Solar Beam', type: 'Grass', power: 120, cooldown: 5.0, priorityTier: 1, description: 'Condensed sunlight energy beam.' },
   thunderbolt: { id: 'm5', name: 'Thunderbolt', type: 'Electric', power: 90, cooldown: 3.5, priorityTier: 1, effect: 'stun', description: 'Powerful shock with stun chance.' },
   dragonclaw: { id: 'm6', name: 'Dragon Claw', type: 'Dragon', power: 80, cooldown: 2.8, priorityTier: 2, description: 'Sharp claws slash through targets.' },
-  shadowball: { id: 'm7', name: 'Shadow Ball', type: 'Ghost', power: 80, cooldown: 3.0, priorityTier: 2, description: 'Dark shadowy sphere of spirit energy.' },
+  shadowball: { id: 'm7', name: 'Shadow Ball', type: 'Ghost', power: 80, cooldown: 3.0, priorityTier: 2, description: 'Dark shadowy sphere.' },
   psychic: { id: 'm8', name: 'Psychic', type: 'Psychic', power: 90, cooldown: 3.2, priorityTier: 1, description: 'Strong telekinetic wave.' },
-  icebeam: { id: 'm9', name: 'Ice Beam', type: 'Ice', power: 90, cooldown: 3.8, priorityTier: 1, effect: 'freeze', description: 'Freezing ray that stops foes cold.' },
-  earthquake: { id: 'm10', name: 'Earthquake', type: 'Ground', power: 100, cooldown: 4.2, priorityTier: 1, effect: 'aoe', description: 'Massive tremors hitting all enemies.' },
+  icebeam: { id: 'm9', name: 'Ice Beam', type: 'Ice', power: 90, cooldown: 3.8, priorityTier: 1, effect: 'freeze', description: 'Freezing ray.' },
+  earthquake: { id: 'm10', name: 'Earthquake', type: 'Ground', power: 100, cooldown: 4.2, priorityTier: 1, effect: 'aoe', description: 'Massive tremors.' },
   moonblast: { id: 'm11', name: 'Moonblast', type: 'Fairy', power: 95, cooldown: 3.6, priorityTier: 1, description: 'Borrowing the power of the moon.' },
-  aurasphere: { id: 'm12', name: 'Aura Sphere', type: 'Fighting', power: 80, cooldown: 2.5, priorityTier: 2, description: 'A blast of pure inner aura that never misses.' },
+  aurasphere: { id: 'm12', name: 'Aura Sphere', type: 'Fighting', power: 80, cooldown: 2.5, priorityTier: 2, description: 'Pure inner aura blast.' },
 };
 
-export interface SpeciesTemplate {
-  dexNumber: number;
-  speciesName: string;
-  types: [any] | [any, any];
-  baseStats: { hp: number; atk: number; def: number; spa: number; spd: number; spe: number };
-  modelArchetype: 'quadruped' | 'biped' | 'draconic' | 'serpentine' | 'avian' | 'orb' | 'crystal_golem';
-  primaryColor: string;
-  secondaryColor: string;
-  accentColor: string;
-  scale: number;
-  availableMoves: string[];
+export function getMovesForType(type: ElementalType): Move[] {
+  switch (type) {
+    case 'Fire': return [SAMPLE_MOVES.flamethrower, SAMPLE_MOVES.tackle];
+    case 'Water': return [SAMPLE_MOVES.hydropump, SAMPLE_MOVES.tackle];
+    case 'Grass': return [SAMPLE_MOVES.solarbeam, SAMPLE_MOVES.tackle];
+    case 'Electric': return [SAMPLE_MOVES.thunderbolt, SAMPLE_MOVES.tackle];
+    case 'Ice': return [SAMPLE_MOVES.icebeam, SAMPLE_MOVES.tackle];
+    case 'Fighting': return [SAMPLE_MOVES.aurasphere, SAMPLE_MOVES.tackle];
+    case 'Ghost': return [SAMPLE_MOVES.shadowball, SAMPLE_MOVES.tackle];
+    case 'Dragon': return [SAMPLE_MOVES.dragonclaw, SAMPLE_MOVES.flamethrower];
+    case 'Psychic': return [SAMPLE_MOVES.psychic, SAMPLE_MOVES.shadowball];
+    case 'Fairy': return [SAMPLE_MOVES.moonblast, SAMPLE_MOVES.psychic];
+    case 'Ground': return [SAMPLE_MOVES.earthquake, SAMPLE_MOVES.tackle];
+    default: return [SAMPLE_MOVES.tackle, SAMPLE_MOVES.dragonclaw];
+  }
 }
 
-export const SPECIES_CATALOG: SpeciesTemplate[] = [
-  // Gen 1
-  {
-    dexNumber: 6,
-    speciesName: 'Charizard',
-    types: ['Fire', 'Flying'],
-    baseStats: { hp: 78, atk: 84, def: 78, spa: 109, spd: 85, spe: 100 },
-    modelArchetype: 'draconic',
-    primaryColor: '#e06020',
-    secondaryColor: '#f8d030',
-    accentColor: '#30a0d0',
-    scale: 1.2,
-    availableMoves: ['flamethrower', 'dragonclaw', 'tackle'],
-  },
-  {
-    dexNumber: 9,
-    speciesName: 'Blastoise',
-    types: ['Water'],
-    baseStats: { hp: 79, atk: 83, def: 100, spa: 85, spd: 105, spe: 78 },
-    modelArchetype: 'biped',
-    primaryColor: '#3878d8',
-    secondaryColor: '#c8a060',
-    accentColor: '#e0e0e0',
-    scale: 1.15,
-    availableMoves: ['hydropump', 'icebeam', 'tackle'],
-  },
-  {
-    dexNumber: 3,
-    speciesName: 'Venusaur',
-    types: ['Grass', 'Poison'],
-    baseStats: { hp: 80, atk: 82, def: 83, spa: 100, spd: 100, spe: 80 },
-    modelArchetype: 'quadruped',
-    primaryColor: '#48a890',
-    secondaryColor: '#e05878',
-    accentColor: '#d0c830',
-    scale: 1.25,
-    availableMoves: ['solarbeam', 'earthquake', 'tackle'],
-  },
-  {
-    dexNumber: 25,
-    speciesName: 'Pikachu',
-    types: ['Electric'],
-    baseStats: { hp: 35, atk: 55, def: 40, spa: 50, spd: 50, spe: 90 },
-    modelArchetype: 'quadruped',
-    primaryColor: '#ffd820',
-    secondaryColor: '#a05020',
-    accentColor: '#e83020',
-    scale: 0.75,
-    availableMoves: ['thunderbolt', 'tackle'],
-  },
-  {
-    dexNumber: 94,
-    speciesName: 'Gengar',
-    types: ['Ghost', 'Poison'],
-    baseStats: { hp: 60, atk: 65, def: 60, spa: 130, spd: 75, spe: 110 },
-    modelArchetype: 'orb',
-    primaryColor: '#6a3880',
-    secondaryColor: '#421d59',
-    accentColor: '#ff2040',
-    scale: 1.0,
-    availableMoves: ['shadowball', 'psychic'],
-  },
-  {
-    dexNumber: 150,
-    speciesName: 'Mewtwo',
-    types: ['Psychic'],
-    baseStats: { hp: 106, atk: 110, def: 90, spa: 154, spd: 90, spe: 130 },
-    modelArchetype: 'biped',
-    primaryColor: '#d8c8e0',
-    secondaryColor: '#803098',
-    accentColor: '#b840d0',
-    scale: 1.35,
-    availableMoves: ['psychic', 'aurasphere', 'shadowball'],
-  },
-  // Gen 2
-  {
-    dexNumber: 248,
-    speciesName: 'Tyranitar',
-    types: ['Rock', 'Dark'],
-    baseStats: { hp: 100, atk: 134, def: 110, spa: 95, spd: 100, spe: 61 },
-    modelArchetype: 'biped',
-    primaryColor: '#6a824e',
-    secondaryColor: '#304230',
-    accentColor: '#1a5078',
-    scale: 1.3,
-    availableMoves: ['earthquake', 'dragonclaw', 'tackle'],
-  },
-  {
-    dexNumber: 249,
-    speciesName: 'Lugia',
-    types: ['Psychic', 'Flying'],
-    baseStats: { hp: 106, atk: 90, def: 130, spa: 90, spd: 154, spe: 110 },
-    modelArchetype: 'avian',
-    primaryColor: '#e8ecf0',
-    secondaryColor: '#3d4f8f',
-    accentColor: '#4f72c4',
-    scale: 1.4,
-    availableMoves: ['aeroblast' in SAMPLE_MOVES ? 'aeroblast' : 'hydropump', 'psychic'],
-  },
-  // Gen 3
-  {
-    dexNumber: 384,
-    speciesName: 'Rayquaza',
-    types: ['Dragon', 'Flying'],
-    baseStats: { hp: 105, atk: 150, def: 90, spa: 150, spd: 90, spe: 95 },
-    modelArchetype: 'serpentine',
-    primaryColor: '#288848',
-    secondaryColor: '#d8aa28',
-    accentColor: '#d83838',
-    scale: 1.45,
-    availableMoves: ['dragonclaw', 'flamethrower', 'earthquake'],
-  },
-  // Gen 4
-  {
-    dexNumber: 448,
-    speciesName: 'Lucario',
-    types: ['Fighting', 'Steel'],
-    baseStats: { hp: 70, atk: 110, def: 70, spa: 115, spd: 70, spe: 90 },
-    modelArchetype: 'biped',
-    primaryColor: '#3466af',
-    secondaryColor: '#222222',
-    accentColor: '#d8c478',
-    scale: 1.0,
-    availableMoves: ['aurasphere', 'dragonclaw'],
-  },
-  {
-    dexNumber: 445,
-    speciesName: 'Garchomp',
-    types: ['Dragon', 'Ground'],
-    baseStats: { hp: 108, atk: 130, def: 95, spa: 80, spd: 85, spe: 102 },
-    modelArchetype: 'draconic',
-    primaryColor: '#284e80',
-    secondaryColor: '#b82020',
-    accentColor: '#f0c028',
-    scale: 1.3,
-    availableMoves: ['earthquake', 'dragonclaw'],
-  },
-  // Gen 7
-  {
-    dexNumber: 778,
-    speciesName: 'Mimikyu',
-    types: ['Ghost', 'Fairy'],
-    baseStats: { hp: 55, atk: 90, def: 80, spa: 50, spd: 105, spe: 96 },
-    modelArchetype: 'orb',
-    primaryColor: '#cfbe7a',
-    secondaryColor: '#303030',
-    accentColor: '#403830',
-    scale: 0.7,
-    availableMoves: ['shadowball', 'moonblast'],
-  },
-  // Gen 9
-  {
-    dexNumber: 1007,
-    speciesName: 'Koraidon',
-    types: ['Fighting', 'Dragon'],
-    baseStats: { hp: 100, atk: 135, def: 115, spa: 85, spd: 100, spe: 135 },
-    modelArchetype: 'draconic',
-    primaryColor: '#d62d3a',
-    secondaryColor: '#265487',
-    accentColor: '#f2eae1',
-    scale: 1.4,
-    availableMoves: ['dragonclaw', 'flamethrower', 'earthquake'],
-  },
-  {
-    dexNumber: 1024,
-    speciesName: 'Terapagos',
-    types: ['Normal', 'Fairy'],
-    baseStats: { hp: 95, atk: 65, def: 110, spa: 105, spd: 110, spe: 85 },
-    modelArchetype: 'crystal_golem',
-    primaryColor: '#3aa8d8',
-    secondaryColor: '#e0f4ff',
-    accentColor: '#f8d030',
-    scale: 1.25,
-    availableMoves: ['moonblast', 'icebeam', 'earthquake'],
-  }
-];
-
-export function createPokemonInstance(
-  template: SpeciesTemplate,
+export function createPokemonInstanceByDex(
+  dex: number,
   level: number,
   forcedTier?: PrismaticTier,
   bonusResonance: number = 0
 ): PokemonData {
+  const entry = ALL_POKEMON_ENTRIES[dex - 1] || ALL_POKEMON_ENTRIES[0];
+  const types = getTypesForDex(dex);
+  const palette = TYPE_PALETTES[types[0]];
+
+  const baseStats = {
+    hp: 60 + (dex % 50),
+    atk: 65 + ((dex * 3) % 65),
+    def: 60 + ((dex * 5) % 60),
+    spa: 65 + ((dex * 7) % 65),
+    spd: 60 + ((dex * 11) % 60),
+    spe: 65 + ((dex * 13) % 65),
+  };
+
   const ivs = generateRandomIVs();
   const evs: PokemonEVs = { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
-  const stats = calculatePokemonStats(template.baseStats, ivs, evs, level);
+  const stats = calculatePokemonStats(baseStats, ivs, evs, level);
   const tier = forcedTier || rollPrismaticTier(bonusResonance);
-
-  const moves: Move[] = template.availableMoves.map(id => SAMPLE_MOVES[id] || SAMPLE_MOVES.tackle);
+  const moves = getMovesForType(types[0]);
 
   return {
     id: `pk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-    dexNumber: template.dexNumber,
-    speciesName: template.speciesName,
+    dexNumber: dex,
+    speciesName: entry.name,
     level,
     currentExp: 0,
     expToNextLevel: level * 100,
-    types: template.types,
+    types,
     prismaticTier: tier,
     capturedAt: Date.now(),
-    catchRegion: Math.min(9, Math.ceil(level / 100)),
-    baseStats: template.baseStats,
+    catchRegion: entry.gen,
+    baseStats,
     ivs,
     evs,
     stats,
     moves,
-    nature: 'Adamant',
-    modelArchetype: template.modelArchetype,
-    primaryColor: template.primaryColor,
-    secondaryColor: template.secondaryColor,
-    accentColor: template.accentColor,
-    scale: template.scale,
+    nature: 'Hardy',
+    modelArchetype: 'biped',
+    primaryColor: palette.primary,
+    secondaryColor: palette.secondary,
+    accentColor: palette.accent,
+    scale: 1.0,
   };
 }
 
@@ -301,7 +177,7 @@ export const REGIONS_DATA: RegionInfo[] = [
   {
     id: 1,
     name: 'Kanto',
-    generation: 'Gen 1',
+    generation: 'Gen 1 (Dex #1-151)',
     levelRange: [1, 100],
     biomeTheme: 'kanto_grass',
     skyColor: '#68b0f8',
@@ -322,7 +198,7 @@ export const REGIONS_DATA: RegionInfo[] = [
   {
     id: 2,
     name: 'Johto',
-    generation: 'Gen 2',
+    generation: 'Gen 2 (Dex #152-251)',
     levelRange: [101, 200],
     biomeTheme: 'johto_autumn',
     skyColor: '#e0a96d',
@@ -343,7 +219,7 @@ export const REGIONS_DATA: RegionInfo[] = [
   {
     id: 3,
     name: 'Hoenn',
-    generation: 'Gen 3',
+    generation: 'Gen 3 (Dex #252-386)',
     levelRange: [201, 300],
     biomeTheme: 'hoenn_volcano',
     skyColor: '#ff8a65',
@@ -358,7 +234,7 @@ export const REGIONS_DATA: RegionInfo[] = [
   {
     id: 4,
     name: 'Sinnoh',
-    generation: 'Gen 4',
+    generation: 'Gen 4 (Dex #387-493)',
     levelRange: [301, 400],
     biomeTheme: 'sinnoh_snow',
     skyColor: '#90caf9',
@@ -372,7 +248,7 @@ export const REGIONS_DATA: RegionInfo[] = [
   {
     id: 5,
     name: 'Unova',
-    generation: 'Gen 5',
+    generation: 'Gen 5 (Dex #494-649)',
     levelRange: [401, 500],
     biomeTheme: 'unova_city',
     skyColor: '#78909c',
@@ -386,7 +262,7 @@ export const REGIONS_DATA: RegionInfo[] = [
   {
     id: 6,
     name: 'Kalos',
-    generation: 'Gen 6',
+    generation: 'Gen 6 (Dex #650-721)',
     levelRange: [501, 600],
     biomeTheme: 'kalos_fairy',
     skyColor: '#f48fb1',
@@ -400,7 +276,7 @@ export const REGIONS_DATA: RegionInfo[] = [
   {
     id: 7,
     name: 'Alola',
-    generation: 'Gen 7',
+    generation: 'Gen 7 (Dex #722-809)',
     levelRange: [601, 700],
     biomeTheme: 'alola_beach',
     skyColor: '#4dd0e1',
@@ -414,7 +290,7 @@ export const REGIONS_DATA: RegionInfo[] = [
   {
     id: 8,
     name: 'Galar',
-    generation: 'Gen 8',
+    generation: 'Gen 8 (Dex #810-905)',
     levelRange: [701, 800],
     biomeTheme: 'galar_wild',
     skyColor: '#5c6bc0',
@@ -428,7 +304,7 @@ export const REGIONS_DATA: RegionInfo[] = [
   {
     id: 9,
     name: 'Paldea',
-    generation: 'Gen 9',
+    generation: 'Gen 9 (Dex #906-1025)',
     levelRange: [801, 900],
     biomeTheme: 'paldea_crater',
     skyColor: '#ab47bc',

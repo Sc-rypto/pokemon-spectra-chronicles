@@ -3,7 +3,6 @@ import {
   ActiveCombatant,
   AutoCatchSettings,
   BuddyData,
-  RegionInfo,
   PrismaticTier,
   Move,
   InventoryItem,
@@ -11,11 +10,11 @@ import {
   RaidBoss,
 } from '../types/game';
 import {
-  SPECIES_CATALOG,
   REGIONS_DATA,
-  createPokemonInstance,
+  createPokemonInstanceByDex,
   calculatePokemonStats,
 } from '../data/pokemonCatalog';
+import { pokeApiService } from '../services/PokeApiService';
 import { WorldSceneManager } from '../engine/WorldSceneManager';
 import * as THREE from 'three';
 
@@ -30,8 +29,8 @@ export class GameStateManager {
   private static instance: GameStateManager;
 
   // Currencies
-  public pokeDollars: number = 25000;
-  public prismaticShards: number = 850;
+  public pokeDollars: number = 35000;
+  public prismaticShards: number = 1200;
 
   // Regions & Level Caps
   public currentRegionIndex: number = 0; // 0 to 8 (Gen 1 to Gen 9)
@@ -55,7 +54,7 @@ export class GameStateManager {
     affectionLevel: 5,
     passiveTree: {
       prismaticResonanceTier: 2,
-      autoDowsingTier: 1,
+      autoDowsingTier: 2,
       hasteAuraTier: 1,
       goldHoarderTier: 2,
     },
@@ -73,16 +72,16 @@ export class GameStateManager {
 
   // Inventory
   public inventory: InventoryItem[] = [
-    { id: 'b1', name: 'Poké Ball', category: 'balls', count: 150, price: 200, description: 'Standard capture device.', icon: '🔴' },
-    { id: 'b2', name: 'Great Ball', category: 'balls', count: 60, price: 600, description: 'Higher catch rate device.', icon: '🔵' },
-    { id: 'b3', name: 'Ultra Ball', category: 'balls', count: 45, price: 1200, description: 'High-performance capture ball.', icon: '🟡' },
-    { id: 'b4', name: 'Prismatic Sphere', category: 'balls', count: 8, price: 5000, shardPrice: 150, description: 'Guarantees catch on any Prismatic encounter.', icon: '💎' },
-    { id: 'p1', name: 'Hyper Potion', category: 'potions', count: 40, price: 1500, description: 'Restores 200 HP to all squad members.', icon: '🧪' },
+    { id: 'b1', name: 'Poké Ball', category: 'balls', count: 200, price: 200, description: 'Standard capture device.', icon: '🔴' },
+    { id: 'b2', name: 'Great Ball', category: 'balls', count: 80, price: 600, description: 'Higher catch rate device.', icon: '🔵' },
+    { id: 'b3', name: 'Ultra Ball', category: 'balls', count: 50, price: 1200, description: 'High-performance capture ball.', icon: '🟡' },
+    { id: 'b4', name: 'Prismatic Sphere', category: 'balls', count: 12, price: 5000, shardPrice: 150, description: 'Guarantees catch on any Prismatic encounter.', icon: '💎' },
+    { id: 'p1', name: 'Hyper Potion', category: 'potions', count: 50, price: 1500, description: 'Restores 200 HP to all squad members.', icon: '🧪' },
     { id: 's1', name: 'Supernova Holo-Shader', category: 'shaders', count: 1, price: 0, shardPrice: 1000, description: 'Cosmetic aura skin for squad leaders.', icon: '✨' },
-    { id: 'm1', name: 'Prismatic Core Magnet', category: 'materials', count: 3, price: 0, shardPrice: 300, description: 'Lures rare dimensional rifts.', icon: '🧲' },
+    { id: 'm1', name: 'Prismatic Core Magnet', category: 'materials', count: 5, price: 0, shardPrice: 300, description: 'Lures rare dimensional rifts.', icon: '🧲' },
   ];
 
-  // GTS Market Listings (Mock Initial Data)
+  // GTS Market Listings
   public gtsListings: GTSListing[] = [];
 
   // Active Raid Boss
@@ -97,7 +96,7 @@ export class GameStateManager {
     prismaticTier: 'Supernova',
     participants: [
       { id: 'p1', name: 'Red_Apex', damageDealt: 45200, avatarUrl: '🧢' },
-      { id: 'p2', name: 'Cynthia_Garchomp', damageDealt: 38900, avatarUrl: '⚡' },
+      { id: 'p2', name: 'Cynthia_Sinnoh', damageDealt: 38900, avatarUrl: '⚡' },
       { id: 'p3', name: 'Steven_Stone', damageDealt: 51200, avatarUrl: '💎' },
       { id: 'p4', name: 'You (Player)', damageDealt: 47100, avatarUrl: '👑' },
     ],
@@ -111,7 +110,7 @@ export class GameStateManager {
   public squadCombatants: ActiveCombatant[] = [];
   public combatLogs: CombatLogEntry[] = [];
 
-  // Listeners for UI state reactivity
+  // Listeners
   private subscribers: Array<() => void> = [];
   public worldManager: WorldSceneManager | null = null;
   private combatTimer: number | null = null;
@@ -146,41 +145,60 @@ export class GameStateManager {
   }
 
   private initDefaultSquad() {
-    // Starting lineup: Charizard, Lucario, Garchomp, Pikachu, Mewtwo
-    const charizard = createPokemonInstance(SPECIES_CATALOG[0], 48);
-    const pikachu = createPokemonInstance(SPECIES_CATALOG[3], 42);
-    const lucario = createPokemonInstance(SPECIES_CATALOG[9], 45, 'Radiant'); // radiant showcase
-    const garchomp = createPokemonInstance(SPECIES_CATALOG[10], 46);
-    const blastoise = createPokemonInstance(SPECIES_CATALOG[1], 44);
+    // Starting lineup across multiple generations:
+    // Dex 6: Charizard, Dex 25: Pikachu, Dex 448: Lucario, Dex 445: Garchomp, Dex 9: Blastoise
+    const charizard = createPokemonInstanceByDex(6, 48);
+    const pikachu = createPokemonInstanceByDex(25, 42);
+    const lucario = createPokemonInstanceByDex(448, 45, 'Radiant');
+    const garchomp = createPokemonInstanceByDex(445, 46);
+    const blastoise = createPokemonInstanceByDex(9, 44);
 
     this.squad = [charizard, pikachu, lucario, garchomp, blastoise];
     this.squad.forEach(p => this.pokedexCaught.add(p.dexNumber));
 
-    // Walking buddy: Mimikyu
-    this.buddy = createPokemonInstance(SPECIES_CATALOG[11], 40, 'Shiny');
+    // Walking buddy: Dex 778 Mimikyu (Shiny)
+    this.buddy = createPokemonInstanceByDex(778, 40, 'Shiny');
     this.buddyData.pokemonId = this.buddy.id;
     this.pokedexCaught.add(this.buddy.dexNumber);
 
-    // Initial PC Box specimens
-    this.pcBox.push(createPokemonInstance(SPECIES_CATALOG[2], 35));
-    this.pcBox.push(createPokemonInstance(SPECIES_CATALOG[4], 38));
-    this.pcBox.push(createPokemonInstance(SPECIES_CATALOG[5], 50, 'Ethereal'));
+    // Initial PC Box specimens: Dex 3 Venusaur, Dex 94 Gengar, Dex 150 Mewtwo (Ethereal)
+    this.pcBox.push(createPokemonInstanceByDex(3, 35));
+    this.pcBox.push(createPokemonInstanceByDex(94, 38));
+    this.pcBox.push(createPokemonInstanceByDex(150, 50, 'Ethereal'));
+    this.pcBox.push(createPokemonInstanceByDex(384, 70, 'Supernova')); // Rayquaza
 
+    // Fetch PokeAPI real moves & stats asynchronously to upgrade default squad seamlessly
+    this.enrichSquadWithPokeApi();
     this.initCombatants();
   }
 
+  private async enrichSquadWithPokeApi() {
+    for (const p of this.squad) {
+      try {
+        const details = await pokeApiService.getPokemonDetails(p.dexNumber);
+        if (details.moves.length > 0) p.moves = details.moves;
+        p.speciesName = details.name;
+      } catch (_e) {
+        // silent fallback
+      }
+    }
+    this.notify();
+  }
+
   private initGTSListings() {
-    const listSpecies = [
-      { spec: SPECIES_CATALOG[5], lvl: 70, tier: 'Ethereal' as PrismaticTier, price: 450, curr: 'shards' as const },
-      { spec: SPECIES_CATALOG[8], lvl: 150, tier: 'Supernova' as PrismaticTier, price: 1200, curr: 'shards' as const },
-      { spec: SPECIES_CATALOG[12], lvl: 320, tier: 'Radiant' as PrismaticTier, price: 85000, curr: 'dollars' as const },
-      { spec: SPECIES_CATALOG[0], lvl: 85, tier: 'Shiny' as PrismaticTier, price: 35000, curr: 'dollars' as const },
+    const listEntries = [
+      { dex: 150, lvl: 70, tier: 'Ethereal' as PrismaticTier, price: 450, curr: 'shards' as const },
+      { dex: 384, lvl: 150, tier: 'Supernova' as PrismaticTier, price: 1200, curr: 'shards' as const },
+      { dex: 448, lvl: 100, tier: 'Radiant' as PrismaticTier, price: 85000, curr: 'dollars' as const },
+      { dex: 6, lvl: 85, tier: 'Shiny' as PrismaticTier, price: 35000, curr: 'dollars' as const },
+      { dex: 249, lvl: 90, tier: 'Ethereal' as PrismaticTier, price: 600, curr: 'shards' as const },
+      { dex: 1007, lvl: 120, tier: 'Supernova' as PrismaticTier, price: 2000, curr: 'shards' as const },
     ];
 
-    this.gtsListings = listSpecies.map((item, idx) => ({
+    this.gtsListings = listEntries.map((item, idx) => ({
       id: `gts_${idx}_${Date.now()}`,
       sellerName: `Trainer_Red_${idx + 10}`,
-      pokemon: createPokemonInstance(item.spec, item.lvl, item.tier),
+      pokemon: createPokemonInstanceByDex(item.dex, item.lvl, item.tier),
       price: item.price,
       currency: item.curr,
       listedTimestamp: Date.now() - idx * 3600000,
@@ -203,26 +221,45 @@ export class GameStateManager {
     this.spawnEnemyWave();
   }
 
+  /**
+   * Spawns wild Pokémon from the entire Gen 1-9 catalog (all 1025 Pokémon)
+   * filtered by the player's active region!
+   */
   public spawnEnemyWave(forceSupernova: boolean = false) {
     const currentRegion = REGIONS_DATA[this.currentRegionIndex];
     const [minLvl, maxLvl] = currentRegion.levelRange;
-    // Current wave level
     const waveLevel = Math.min(
       maxLvl,
       Math.floor(minLvl + (this.waveNumber % 30) * ((maxLvl - minLvl) / 30) + Math.random() * 5)
     );
 
-    const enemyCount = 2 + Math.floor(Math.random() * 2); // 2 to 3 enemies per wave
+    // Generation dex range bounds:
+    // Gen 1: 1-151, Gen 2: 152-251, Gen 3: 252-386, Gen 4: 387-493, Gen 5: 494-649, Gen 6: 650-721, Gen 7: 722-809, Gen 8: 810-905, Gen 9: 906-1025
+    const genRanges: [number, number][] = [
+      [1, 151],
+      [152, 251],
+      [252, 386],
+      [387, 493],
+      [494, 649],
+      [650, 721],
+      [722, 809],
+      [810, 905],
+      [906, 1025],
+    ];
+
+    const [dexMin, dexMax] = genRanges[this.currentRegionIndex] || [1, 151];
+    const enemyCount = 2 + Math.floor(Math.random() * 2); // 2 to 3 per wave
     this.activeEnemies = [];
 
     for (let i = 0; i < enemyCount; i++) {
-      const randomSpecies = SPECIES_CATALOG[Math.floor(Math.random() * SPECIES_CATALOG.length)];
+      // Pick random dex from region's full generation pool
+      const randomDex = dexMin + Math.floor(Math.random() * (dexMax - dexMin + 1));
       const tier: PrismaticTier = (i === 0 && forceSupernova)
         ? 'Supernova'
         : undefined as any;
 
-      const enemyPkmn = createPokemonInstance(
-        randomSpecies,
+      const enemyPkmn = createPokemonInstanceByDex(
+        randomDex,
         waveLevel,
         tier,
         this.buddyData.passiveTree.prismaticResonanceTier
@@ -242,7 +279,7 @@ export class GameStateManager {
 
       if (enemyPkmn.prismaticTier !== 'Standard') {
         this.addLog(
-          `⚡ A rare ${enemyPkmn.prismaticTier} ${enemyPkmn.speciesName} (Lv. ${enemyPkmn.level}) appeared!`,
+          `⚡ A wild ${enemyPkmn.prismaticTier} ${enemyPkmn.speciesName} (Dex #${enemyPkmn.dexNumber}, Lv. ${enemyPkmn.level}) appeared!`,
           'prismatic'
         );
       }
@@ -255,7 +292,6 @@ export class GameStateManager {
   }
 
   private startCombatLoop() {
-    // High-frequency continuous auto-combat loop (10 ticks/second)
     this.combatTimer = window.setInterval(() => {
       if (!this.isBattling) return;
       this.processCombatTick(0.1);
@@ -264,9 +300,8 @@ export class GameStateManager {
 
   private processCombatTick(delta: number) {
     const now = Date.now();
-    let enemyDefeatedCount = 0;
 
-    // Check if squad is all fainted -> auto-revive/heal
+    // Check revive if all fainted
     const allSquadFainted = this.squadCombatants.every(c => c.isFainted);
     if (allSquadFainted) {
       this.squadCombatants.forEach(c => {
@@ -280,19 +315,16 @@ export class GameStateManager {
     this.squadCombatants.forEach(attacker => {
       if (attacker.isFainted) return;
 
-      // Find living enemy target
       const aliveEnemies = this.activeEnemies.filter(e => !e.isFainted);
       if (aliveEnemies.length === 0) return;
       const target = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
 
-      // Check move readiness based on priority tiers
       const sortedMoves = [...attacker.pokemon.moves].sort((a, b) => a.priorityTier - b.priorityTier);
       const readyMove = sortedMoves.find(m => {
         const cd = attacker.attackCooldowns[m.id] || 0;
         return cd <= 0;
       });
 
-      // Decrement move cooldowns
       attacker.pokemon.moves.forEach(m => {
         const currentCd = attacker.attackCooldowns[m.id] || 0;
         if (currentCd > 0) {
@@ -300,7 +332,7 @@ export class GameStateManager {
         }
       });
 
-      if (readyMove && (now - attacker.lastAttackTimestamp) > (readyMove.cooldown * 800)) {
+      if (readyMove && (now - attacker.lastAttackTimestamp) > (readyMove.cooldown * 750)) {
         attacker.lastAttackTimestamp = now;
         attacker.attackCooldowns[readyMove.id] = readyMove.cooldown;
         this.executeAttack(attacker, target, readyMove);
@@ -325,14 +357,10 @@ export class GameStateManager {
       }
     });
 
-    // 3. Check enemy status & Auto-Catch logic
+    // 3. Auto-Catch checks
     this.activeEnemies.forEach(enemy => {
-      if (enemy.isFainted) {
-        enemyDefeatedCount++;
-        return;
-      }
+      if (enemy.isFainted) return;
 
-      // Check auto-catch triggers
       if (this.autoCatchSettings.enabled && this.inventory.find(i => i.category === 'balls' && i.count > 0)) {
         const isPrismatic = enemy.pokemon.prismaticTier !== 'Standard';
         const isUnregistered = !this.pokedexCaught.has(enemy.pokemon.dexNumber);
@@ -340,23 +368,22 @@ export class GameStateManager {
         const shouldThrow =
           (isPrismatic) ||
           (this.autoCatchSettings.catchUnregistered && isUnregistered) ||
-          (!this.autoCatchSettings.targetPrismaticOnly && enemy.currentHp < enemy.maxHp * 0.35);
+          (!this.autoCatchSettings.targetPrismaticOnly && enemy.currentHp < enemy.maxHp * 0.4);
 
-        if (shouldThrow && Math.random() < 0.25) { // 25% attempt per tick window
+        if (shouldThrow && Math.random() < 0.28) {
           this.attemptCapture(enemy);
         }
       }
     });
 
-    // If all enemies defeated or captured -> next wave
+    // 4. Wave resolution
     if (this.activeEnemies.length > 0 && this.activeEnemies.every(e => e.isFainted)) {
       this.waveNumber++;
-      // Award wave gold & shards
-      const goldAward = Math.floor(150 * (1 + this.buddyData.passiveTree.goldHoarderTier * 0.3) * (1 + this.currentRegionIndex * 0.5));
+      const goldAward = Math.floor(180 * (1 + this.buddyData.passiveTree.goldHoarderTier * 0.35) * (1 + this.currentRegionIndex * 0.5));
       this.pokeDollars += goldAward;
 
-      if (Math.random() < 0.3 + this.buddyData.passiveTree.autoDowsingTier * 0.1) {
-        const shardsAward = 5 + Math.floor(Math.random() * 10);
+      if (Math.random() < 0.35 + this.buddyData.passiveTree.autoDowsingTier * 0.1) {
+        const shardsAward = 8 + Math.floor(Math.random() * 12);
         this.prismaticShards += shardsAward;
       }
 
@@ -365,7 +392,6 @@ export class GameStateManager {
   }
 
   private executeAttack(attacker: ActiveCombatant, target: ActiveCombatant, move: Move) {
-    // Damage formula: ((2 * Lvl / 5 + 2) * Power * (Atk / Def)) / 50 + 2
     const lvl = attacker.pokemon.level;
     const atk = attacker.pokemon.stats.atk;
     const def = target.pokemon.stats.def;
@@ -375,7 +401,6 @@ export class GameStateManager {
 
     target.currentHp = Math.max(0, target.currentHp - damage);
 
-    // 3D Visual beam & floating number FX
     if (this.worldManager) {
       const fromMesh = attacker.isPlayer
         ? this.worldManager.playerMeshes.get(attacker.pokemon.id)
@@ -398,14 +423,13 @@ export class GameStateManager {
     if (target.currentHp <= 0) {
       target.isFainted = true;
       if (attacker.isPlayer) {
-        this.gainExp(attacker.pokemon, target.pokemon.level * 45);
+        this.gainExp(attacker.pokemon, target.pokemon.level * 50);
         this.addLog(`${attacker.pokemon.speciesName} fainted wild ${target.pokemon.speciesName}!`, 'faint');
       }
     }
   }
 
   private attemptCapture(enemy: ActiveCombatant) {
-    // Consume ball
     const ballItem = this.inventory.find(i => i.id === (
       this.autoCatchSettings.preferredBall === 'ultra' ? 'b3' :
       this.autoCatchSettings.preferredBall === 'prismatic' ? 'b4' :
@@ -415,13 +439,12 @@ export class GameStateManager {
     if (!ballItem || ballItem.count <= 0) return;
     ballItem.count--;
 
-    // Capture success check
     const isMasterBallTier = ballItem.id === 'b4';
     const hpFactor = 1 - (enemy.currentHp / enemy.maxHp);
     const catchRate = isMasterBallTier ? 1.0 : (0.4 + hpFactor * 0.5);
 
     if (Math.random() < catchRate) {
-      enemy.isFainted = true; // remove from field
+      enemy.isFainted = true;
       this.pokedexCaught.add(enemy.pokemon.dexNumber);
       this.pcBox.push(enemy.pokemon);
 
@@ -435,11 +458,10 @@ export class GameStateManager {
       }
 
       this.addLog(
-        `🎉 Successfully caught ${enemy.pokemon.prismaticTier !== 'Standard' ? enemy.pokemon.prismaticTier + ' ' : ''}${enemy.pokemon.speciesName} (Lv. ${enemy.pokemon.level}) with ${ballItem.name}!`,
+        `🎉 Successfully caught ${enemy.pokemon.prismaticTier !== 'Standard' ? enemy.pokemon.prismaticTier + ' ' : ''}${enemy.pokemon.speciesName} (Dex #${enemy.pokemon.dexNumber}, Lv. ${enemy.pokemon.level}) with ${ballItem.name}!`,
         'catch'
       );
 
-      // Show floating text
       if (this.worldManager) {
         const mesh = this.worldManager.enemyMeshes.get(enemy.visual3dId);
         if (mesh) {
@@ -459,12 +481,11 @@ export class GameStateManager {
 
   public gainExp(pokemon: PokemonData, expAmount: number) {
     const currentRegion = REGIONS_DATA[this.currentRegionIndex];
-    // Check local region level cap lock
     const currentGym = currentRegion.gyms.find(g => !g.defeated);
     const maxCap = currentGym ? currentGym.levelRequirement : currentRegion.levelRange[1];
 
     if (pokemon.level >= maxCap) {
-      return; // Locked until gym leader defeated!
+      return;
     }
 
     pokemon.currentExp += expAmount;
@@ -474,7 +495,6 @@ export class GameStateManager {
       pokemon.expToNextLevel = pokemon.level * 100;
       pokemon.stats = calculatePokemonStats(pokemon.baseStats, pokemon.ivs, pokemon.evs, pokemon.level);
 
-      // Update in combatants
       const combatant = this.squadCombatants.find(c => c.pokemon.id === pokemon.id);
       if (combatant) {
         combatant.maxHp = pokemon.stats.maxHp;
@@ -508,12 +528,10 @@ export class GameStateManager {
     this.prismaticShards += gym.rewardShards;
     this.pokeDollars += gym.rewardShards * 50;
 
-    // Unlock next gym or next region
     const nextGym = currentRegion.gyms.find(g => !g.defeated);
     if (nextGym) {
       nextGym.unlocked = true;
     } else {
-      // All gyms in this region defeated! Unlock next region
       if (this.currentRegionIndex < REGIONS_DATA.length - 1) {
         this.maxUnlockedRegionIndex = Math.max(this.maxUnlockedRegionIndex, this.currentRegionIndex + 1);
         REGIONS_DATA[this.currentRegionIndex + 1].gyms[0].unlocked = true;

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { GameStateManager } from '../../state/GameStateManager';
 import { Users, Shuffle, Globe, Trophy, Swords, Sparkles, ArrowRight } from 'lucide-react';
-import { SPECIES_CATALOG, createPokemonInstance } from '../../data/pokemonCatalog';
+import { createPokemonInstanceByDex, ALL_POKEMON_ENTRIES } from '../../data/pokemonCatalog';
 
 interface SocialHubTabProps {
   state: GameStateManager;
@@ -20,9 +20,9 @@ export const SocialHubTab: React.FC<SocialHubTabProps> = ({ state }) => {
 
     setWonderTradeStatus('Transmitting Pokémon through the Wonder Rift Dimensional Void...');
     setTimeout(() => {
-      // Pick random incoming species
-      const randomSpecies = SPECIES_CATALOG[Math.floor(Math.random() * SPECIES_CATALOG.length)];
-      const incoming = createPokemonInstance(randomSpecies, 50 + Math.floor(Math.random() * 40));
+      // Pick random incoming species from all 1025 Pokémon
+      const randomDex = 1 + Math.floor(Math.random() * ALL_POKEMON_ENTRIES.length);
+      const incoming = createPokemonInstanceByDex(randomDex, 50 + Math.floor(Math.random() * 40));
       state.pcBox.push(incoming);
       setWonderTradeStatus(`Rift Trade Complete! Received a Lv. ${incoming.level} ${incoming.speciesName} (${incoming.prismaticTier})!`);
       state.sync3DScene();

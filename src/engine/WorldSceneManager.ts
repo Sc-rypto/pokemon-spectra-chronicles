@@ -13,6 +13,15 @@ export interface FloatingText {
   scale: number;
 }
 
+interface ParticleProjectile {
+  mesh: THREE.Mesh;
+  startPos: THREE.Vector3;
+  targetPos: THREE.Vector3;
+  progress: number;
+  speed: number;
+  color: number;
+}
+
 export class WorldSceneManager {
   private container: HTMLElement;
   public scene: THREE.Scene;
@@ -26,14 +35,19 @@ export class WorldSceneManager {
   private dirLight!: THREE.DirectionalLight;
   private hemiLight!: THREE.HemisphereLight;
   private biomeDecos: THREE.Group = new THREE.Group();
+  private arenaRing!: THREE.Mesh;
 
-  // Mesh registries for combatants
+  // Combatant meshes
   public playerMeshes: Map<string, ProceduralPokemonMesh> = new Map();
   public enemyMeshes: Map<string, ProceduralPokemonMesh> = new Map();
   public buddyMesh: ProceduralPokemonMesh | null = null;
   public trainerMesh: THREE.Group | null = null;
 
-  // Visual effects
+  // Dynamic particle projectiles and burst FX
+  private projectiles: ParticleProjectile[] = [];
+  private burstParticles: { group: THREE.Points; life: number; maxLife: number; velocities: Float32Array }[] = [];
+
+  // Floating combat numbers
   public floatingTexts: FloatingText[] = [];
   private clock = new THREE.Clock();
   public onFloatingTextsUpdate?: (texts: FloatingText[]) => void;
@@ -54,7 +68,7 @@ export class WorldSceneManager {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 1.15;
 
     container.appendChild(this.renderer.domElement);
 
@@ -68,36 +82,35 @@ export class WorldSceneManager {
   }
 
   private setupCamera() {
-    // Third-person elevated isometric battle angle
-    this.camera.position.set(0, 11, 20);
-    this.camera.lookAt(0, 1.2, 0);
+    this.camera.position.set(0, 10, 18);
+    this.camera.lookAt(0, 1.0, 0);
   }
 
   private setupLighting() {
-    this.hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
-    this.hemiLight.position.set(0, 20, 0);
+    this.hemiLight = new THREE.HemisphereLight(0xffffff, 0x334155, 1.4);
+    this.hemiLight.position.set(0, 25, 0);
     this.scene.add(this.hemiLight);
 
-    this.dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-    this.dirLight.position.set(12, 22, 10);
+    this.dirLight = new THREE.DirectionalLight(0xffffff, 1.8);
+    this.dirLight.position.set(10, 24, 12);
     this.dirLight.castShadow = true;
     this.dirLight.shadow.mapSize.width = 1024;
     this.dirLight.shadow.mapSize.height = 1024;
     this.dirLight.shadow.camera.near = 0.5;
-    this.dirLight.shadow.camera.far = 60;
-    this.dirLight.shadow.camera.left = -15;
-    this.dirLight.shadow.camera.right = 15;
-    this.dirLight.shadow.camera.top = 15;
-    this.dirLight.shadow.camera.bottom = -15;
+    this.dirLight.shadow.camera.far = 70;
+    this.dirLight.shadow.camera.left = -16;
+    this.dirLight.shadow.camera.right = 16;
+    this.dirLight.shadow.camera.top = 16;
+    this.dirLight.shadow.camera.bottom = -16;
     this.scene.add(this.dirLight);
   }
 
   private setupEnvironment() {
     // Stylized terrain ground plane
-    const groundGeo = new THREE.PlaneGeometry(80, 80, 32, 32);
+    const groundGeo = new THREE.PlaneGeometry(90, 90, 32, 32);
     const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x388e3c,
-      roughness: 0.8,
+      color: 0x2e7d32,
+      roughness: 0.85,
       metalness: 0.1,
     });
     this.groundMesh = new THREE.Mesh(groundGeo, groundMat);
@@ -105,57 +118,71 @@ export class WorldSceneManager {
     this.groundMesh.receiveShadow = true;
     this.scene.add(this.groundMesh);
 
-    // Subtle battle grid
-    this.gridHelper = new THREE.GridHelper(50, 50, 0xffffff, 0x2e7d32);
+    // Dynamic glowing Battle Arena circle
+    const ringGeo = new THREE.RingGeometry(8.5, 9.0, 48);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0x6366f1,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.5,
+    });
+    this.arenaRing = new THREE.Mesh(ringGeo, ringMat);
+    this.arenaRing.rotation.x = -Math.PI / 2;
+    this.arenaRing.position.y = 0.03;
+    this.scene.add(this.arenaRing);
+
+    // Battlefield grid lines
+    this.gridHelper = new THREE.GridHelper(40, 20, 0x818cf8, 0x1e293b);
     this.gridHelper.position.y = 0.02;
     this.scene.add(this.gridHelper);
 
-    // Biome props container
     this.scene.add(this.biomeDecos);
     this.generateBiomeDecorations(REGIONS_DATA[0]);
 
-    this.scene.fog = new THREE.FogExp2(0xb2dfdb, 0.015);
+    this.scene.fog = new THREE.FogExp2(0xb2dfdb, 0.018);
     this.scene.background = new THREE.Color(REGIONS_DATA[0].skyColor);
   }
 
   private buildTrainerMesh() {
-    // Stylized low-poly trainer standing behind the squad
     const trainerGroup = new THREE.Group();
-    const coatMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a });
-    const skinMat = new THREE.MeshStandardMaterial({ color: 0xffd1a4 });
-    const capMat = new THREE.MeshStandardMaterial({ color: 0xdc2626 });
+    const coatMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.5 });
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xffd1a4, roughness: 0.6 });
+    const capMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.4 });
 
     // Torso
-    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, 0.9, 6), coatMat);
+    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, 0.9, 8), coatMat);
     torso.position.y = 1.35;
+    torso.castShadow = true;
     trainerGroup.add(torso);
 
     // Head
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 8), skinMat);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 10), skinMat);
     head.position.y = 2.05;
+    head.castShadow = true;
     trainerGroup.add(head);
 
-    // Trainer Red Cap
+    // Trainer Cap
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.18, 8), capMat);
     cap.position.y = 2.25;
     trainerGroup.add(cap);
 
-    // Visor
     const visor = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.05, 0.25), capMat);
     visor.position.set(0, 2.2, -0.25);
     trainerGroup.add(visor);
 
     // Legs
     const legGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.9, 6);
-    const legMat = new THREE.MeshStandardMaterial({ color: 0x111827 });
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x0f172a });
     const legL = new THREE.Mesh(legGeo, legMat);
     legL.position.set(-0.2, 0.5, 0);
+    legL.castShadow = true;
     const legR = new THREE.Mesh(legGeo, legMat);
     legR.position.set(0.2, 0.5, 0);
+    legR.castShadow = true;
     trainerGroup.add(legL, legR);
 
     trainerGroup.position.set(0, 0, 9.5);
-    trainerGroup.rotation.y = Math.PI; // Look towards combat
+    trainerGroup.rotation.y = Math.PI;
     this.scene.add(trainerGroup);
     this.trainerMesh = trainerGroup;
   }
@@ -167,26 +194,22 @@ export class WorldSceneManager {
       (this.scene.fog as THREE.FogExp2).color.set(region.fogColor);
     }
     this.hemiLight.color.set(region.ambientColor);
-
     this.generateBiomeDecorations(region);
   }
 
   private generateBiomeDecorations(region: RegionInfo) {
-    // Clear old props
     while (this.biomeDecos.children.length > 0) {
       const obj = this.biomeDecos.children[0];
       this.biomeDecos.remove(obj);
     }
 
-    // Generate trees, rocks, crystals according to biome
-    for (let i = 0; i < 28; i++) {
-      const angle = (i / 28) * Math.PI * 2;
-      const radius = 22 + Math.random() * 12;
+    for (let i = 0; i < 24; i++) {
+      const angle = (i / 24) * Math.PI * 2;
+      const radius = 20 + Math.random() * 14;
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius;
 
       if (region.biomeTheme === 'paldea_crater' || region.biomeTheme === 'sinnoh_snow') {
-        // Giant luminous crystals
         const crystalGeo = new THREE.OctahedronGeometry(1.2 + Math.random() * 1.5, 0);
         const crystalMat = new THREE.MeshStandardMaterial({
           color: region.biomeTheme === 'paldea_crater' ? 0xd946ef : 0x38bdf8,
@@ -200,7 +223,6 @@ export class WorldSceneManager {
         crystal.rotation.set(Math.random(), Math.random(), Math.random());
         this.biomeDecos.add(crystal);
       } else {
-        // Low-poly stylized trees
         const trunkGeo = new THREE.CylinderGeometry(0.2, 0.4, 2, 5);
         const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033 });
         const trunk = new THREE.Mesh(trunkGeo, trunkMat);
@@ -218,11 +240,9 @@ export class WorldSceneManager {
     }
   }
 
-  // SQUAD & ENEMY PLACEMENT LOGIC
   public syncSquad(squad: PokemonData[], buddy?: PokemonData) {
     const activeIds = new Set(squad.map(p => p.id));
 
-    // Remove meshes no longer in squad
     this.playerMeshes.forEach((mesh, id) => {
       if (!activeIds.has(id)) {
         this.scene.remove(mesh.group);
@@ -231,7 +251,6 @@ export class WorldSceneManager {
       }
     });
 
-    // Positions for 5 squad members in a battle front arc (facing -Z toward enemies)
     const squadSlots = [
       { x: -5.0, z: 4.5 },
       { x: -2.5, z: 3.5 },
@@ -249,10 +268,9 @@ export class WorldSceneManager {
       }
       const slot = squadSlots[idx] || squadSlots[0];
       mesh.group.position.set(slot.x, 0, slot.z);
-      mesh.group.rotation.y = 0; // Face forward towards enemies (-Z)
+      mesh.group.rotation.y = 0;
     });
 
-    // Update Buddy Pokemon (walks next to Trainer)
     if (buddy) {
       if (!this.buddyMesh || this.buddyMesh.pokemon.id !== buddy.id) {
         if (this.buddyMesh) {
@@ -262,7 +280,7 @@ export class WorldSceneManager {
         this.buddyMesh = new ProceduralPokemonMesh(buddy);
         this.scene.add(this.buddyMesh.group);
       }
-      this.buddyMesh.group.position.set(1.5, 0, 9.5);
+      this.buddyMesh.group.position.set(1.6, 0, 9.5);
       this.buddyMesh.group.rotation.y = -0.3;
     }
   }
@@ -270,7 +288,6 @@ export class WorldSceneManager {
   public syncEnemies(enemies: ActiveCombatant[]) {
     const activeIds = new Set(enemies.map(e => e.visual3dId));
 
-    // Remove old enemy meshes
     this.enemyMeshes.forEach((mesh, id) => {
       if (!activeIds.has(id)) {
         this.scene.remove(mesh.group);
@@ -279,7 +296,6 @@ export class WorldSceneManager {
       }
     });
 
-    // Enemy placement slots across the battlefield
     const enemySlots = [
       { x: -4.0, z: -5.0 },
       { x: -1.5, z: -6.5 },
@@ -296,41 +312,70 @@ export class WorldSceneManager {
       }
       const slot = enemySlots[idx] || enemySlots[0];
       mesh.group.position.set(slot.x, 0, slot.z);
-      mesh.group.rotation.y = Math.PI; // Face towards player squad (+Z)
+      mesh.group.rotation.y = Math.PI;
     });
   }
 
-  // Visual attack effect projectile / beam
+  // 3D Animated Projectiles and Impact Bursts
   public triggerAttackFx(fromPos: THREE.Vector3, toPos: THREE.Vector3, type: string) {
-    const distance = fromPos.distanceTo(toPos);
-    const beamGeo = new THREE.CylinderGeometry(0.12, 0.12, distance, 6);
-    let colorHex = 0xff5533; // Fire/default
+    let colorHex = 0xff5533;
     if (type === 'Water') colorHex = 0x3b82f6;
     if (type === 'Grass') colorHex = 0x22c55e;
     if (type === 'Electric') colorHex = 0xfacc15;
     if (type === 'Psychic' || type === 'Fairy') colorHex = 0xd946ef;
     if (type === 'Ghost' || type === 'Dark') colorHex = 0x8b5cf6;
+    if (type === 'Ice') colorHex = 0x67e8f9;
+    if (type === 'Dragon') colorHex = 0x6366f1;
 
-    const beamMat = new THREE.MeshBasicMaterial({ color: colorHex, wireframe: false });
-    const beam = new THREE.Mesh(beamGeo, beamMat);
+    // Glowing energy sphere projectile
+    const projGeo = new THREE.SphereGeometry(0.35, 12, 12);
+    const projMat = new THREE.MeshBasicMaterial({ color: colorHex });
+    const projectileMesh = new THREE.Mesh(projGeo, projMat);
+    projectileMesh.position.copy(fromPos).add(new THREE.Vector3(0, 1.0, 0));
+    this.scene.add(projectileMesh);
 
-    // Position midpoint
-    const mid = fromPos.clone().add(toPos).multiplyScalar(0.5);
-    beam.position.copy(mid);
-    beam.position.y += 0.8;
-    beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), toPos.clone().sub(fromPos).normalize());
-
-    this.scene.add(beam);
-
-    // Fade out and remove beam quickly
-    setTimeout(() => {
-      this.scene.remove(beam);
-      beamGeo.dispose();
-      beamMat.dispose();
-    }, 220);
+    this.projectiles.push({
+      mesh: projectileMesh,
+      startPos: projectileMesh.position.clone(),
+      targetPos: toPos.clone().add(new THREE.Vector3(0, 1.0, 0)),
+      progress: 0,
+      speed: 3.5, // completes in ~0.28s
+      color: colorHex,
+    });
   }
 
-  // Floating Combat Text numbers
+  private createImpactBurst(pos: THREE.Vector3, colorHex: number) {
+    const count = 35;
+    const geo = new THREE.BufferGeometry();
+    const positions = new Float32Array(count * 3);
+    const velocities = new Float32Array(count * 3);
+
+    for (let i = 0; i < count; i++) {
+      positions[i * 3] = pos.x;
+      positions[i * 3 + 1] = pos.y;
+      positions[i * 3 + 2] = pos.z;
+
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2.0 + Math.random() * 4.0;
+      velocities[i * 3] = Math.cos(angle) * speed;
+      velocities[i * 3 + 1] = (Math.random() - 0.2) * speed;
+      velocities[i * 3 + 2] = Math.sin(angle) * speed;
+    }
+
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const mat = new THREE.PointsMaterial({
+      color: colorHex,
+      size: 0.28,
+      transparent: true,
+      opacity: 1.0,
+      blending: THREE.AdditiveBlending,
+    });
+
+    const points = new THREE.Points(geo, mat);
+    this.scene.add(points);
+    this.burstParticles.push({ group: points, life: 0, maxLife: 0.35, velocities });
+  }
+
   public addFloatingText(text: string, color: string, worldPos: THREE.Vector3) {
     const id = `ft_${Date.now()}_${Math.random()}`;
     const screenPos = this.projectToScreen(worldPos);
@@ -364,25 +409,67 @@ export class WorldSceneManager {
     const animate = () => {
       this.animFrameId = requestAnimationFrame(animate);
       const elapsed = this.clock.getElapsedTime();
-      const delta = this.clock.getDelta();
+      const delta = Math.min(this.clock.getDelta(), 0.1);
 
-      // Update player pokemon animations
+      // Pulse arena ring
+      if (this.arenaRing) {
+        (this.arenaRing.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.sin(elapsed * 2.5) * 0.15;
+      }
+
+      // Update 3D Pokémon models & skeletal animations
       this.playerMeshes.forEach(mesh => mesh.update(elapsed, delta, false, false));
-      // Update enemy pokemon animations
       this.enemyMeshes.forEach(mesh => mesh.update(elapsed, delta, false, false));
-      // Update buddy walking animation
       if (this.buddyMesh) {
         this.buddyMesh.update(elapsed, delta, true, false);
       }
 
-      // Camera gentle sway for cinematic dynamism
-      this.camera.position.x = Math.sin(elapsed * 0.4) * 0.8;
+      // Dynamic cinematic camera sway
+      this.camera.position.x = Math.sin(elapsed * 0.35) * 0.9;
+      this.camera.lookAt(0, 1.0, 0);
+
+      // Animate active attack projectiles
+      for (let i = this.projectiles.length - 1; i >= 0; i--) {
+        const p = this.projectiles[i];
+        p.progress += delta * p.speed;
+        p.mesh.position.lerpVectors(p.startPos, p.targetPos, p.progress);
+        // Arch trajectory upward
+        p.mesh.position.y += Math.sin(p.progress * Math.PI) * 0.6;
+
+        if (p.progress >= 1.0) {
+          this.createImpactBurst(p.targetPos, p.color);
+          this.scene.remove(p.mesh);
+          p.mesh.geometry.dispose();
+          (p.mesh.material as THREE.Material).dispose();
+          this.projectiles.splice(i, 1);
+        }
+      }
+
+      // Animate impact bursts
+      for (let i = this.burstParticles.length - 1; i >= 0; i--) {
+        const b = this.burstParticles[i];
+        b.life += delta;
+        const positions = b.group.geometry.attributes.position.array as Float32Array;
+        for (let j = 0; j < positions.length / 3; j++) {
+          positions[j * 3] += b.velocities[j * 3] * delta;
+          positions[j * 3 + 1] += b.velocities[j * 3 + 1] * delta;
+          positions[j * 3 + 2] += b.velocities[j * 3 + 2] * delta;
+        }
+        b.group.geometry.attributes.position.needsUpdate = true;
+        (b.group.material as THREE.PointsMaterial).opacity = 1.0 - (b.life / b.maxLife);
+
+        if (b.life >= b.maxLife) {
+          this.scene.remove(b.group);
+          b.group.geometry.dispose();
+          (b.group.material as THREE.Material).dispose();
+          this.burstParticles.splice(i, 1);
+        }
+      }
 
       // Update floating combat numbers
       for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
         const ft = this.floatingTexts[i];
         ft.worldPos.y += 0.04;
-        ft.opacity -= 0.022;
+        ft.opacity -= 0.024;
         ft.screenPos = this.projectToScreen(ft.worldPos);
         if (ft.opacity <= 0) {
           this.floatingTexts.splice(i, 1);
