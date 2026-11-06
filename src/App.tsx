@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { GameStateManager } from './state/GameStateManager';
 import { MeadowBattlefield } from './components/MeadowBattlefield';
 import { BottomDock, TabKey } from './components/navigation/BottomDock';
-import { BattleTab } from './components/drawers/BattleTab';
 import { SquadBuddyTab } from './components/drawers/SquadBuddyTab';
 import { WorldTab } from './components/drawers/WorldTab';
 import { ShopTab } from './components/drawers/ShopTab';
 import { SocialHubTab } from './components/drawers/SocialHubTab';
+import { GymBattleView } from './components/drawers/GymBattleView';
 
 export const App: React.FC = () => {
   const gameState = GameStateManager.getInstance();
@@ -36,6 +36,11 @@ export const App: React.FC = () => {
             {activeTab === 'shop' && <ShopTab state={gameState} />}
             {activeTab === 'raid' && <SocialHubTab state={gameState} />}
           </div>
+        )}
+
+        {/* AUTHENTIC ANIMATED MAIN-SERIES GYM BATTLE ARENA MODAL */}
+        {gameState.activeGymBattle && (
+          <GymBattleView state={gameState} />
         )}
       </main>
 

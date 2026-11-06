@@ -8,6 +8,8 @@ import {
   InventoryItem,
   MarketListing,
   RaidBossState,
+  GymBattleSession,
+  GymLeader,
 } from '../types/game';
 import {
   REGIONS_DATA,
@@ -17,6 +19,7 @@ import {
   calculateTypeMultiplier,
   ASSET_ICONS,
 } from '../data/pokemonCatalog';
+import { TALLGRASS_SHOP_CATALOG } from '../data/tallgrassItems';
 
 export interface CombatLogEntry {
   id: string;
@@ -32,9 +35,13 @@ export class GameStateManager {
   public pokeDollars: number = 3200;
   public prismaticShards: number = 220;
 
-  // Regions & Gym Badges
+  // Regions, Cities & Gym Badges
   public currentRegionIndex: number = 0;
+  public currentCityIndex: number = 0;
   public maxUnlockedRegionIndex: number = 0;
+
+  // Waves beaten in current city (requires 5 waves to unlock city Gym Leader)
+  public cityWavesBeaten: Record<number, number> = {};
 
   // Collection
   public pokedexCaught: Set<number> = new Set();
@@ -49,8 +56,8 @@ export class GameStateManager {
   public squad: PokemonData[] = [];
   public activeBattlerSlot: number = 0;
   public pcBox: PokemonData[] = [];
-  
-  // Walking Buddy
+
+  // Walking Companion
   public buddy: PokemonData | null = null;
   public buddyData: BuddyData = {
     pokemonId: '',
@@ -73,17 +80,10 @@ export class GameStateManager {
     preferredBall: 'poke',
   };
 
-  // Real Inventory (Official Capture Orbs & Potions)
-  public inventory: InventoryItem[] = [
-    { id: 'b1', name: 'Capture Orb', category: 'balls', count: 40, price: 200, description: 'Standard capture sphere used to safely secure weakened Pokémon in the Meadow.', icon: ASSET_ICONS.pokeBall, catchMultiplier: 1.0 },
-    { id: 'b2', name: 'Great Orb', category: 'balls', count: 12, price: 600, description: 'Reinforced capture sphere with higher odds.', icon: ASSET_ICONS.greatBall, catchMultiplier: 1.5 },
-    { id: 'b3', name: 'Ultra Orb', category: 'balls', count: 5, price: 1200, description: 'High-performance capture orb designed for difficult catches.', icon: ASSET_ICONS.ultraBall, catchMultiplier: 2.0 },
-    { id: 'b4', name: 'Prism Orb', category: 'balls', count: 1, price: 5000, shardPrice: 150, description: 'Guarantees 100% capture rate on any Pokémon or Prismatic variant.', icon: ASSET_ICONS.masterBall, catchMultiplier: 255.0 },
-    { id: 'p1', name: 'Super Potion', category: 'potions', count: 15, price: 700, description: 'Restores 100 HP to your active battler.', icon: ASSET_ICONS.potion },
-    { id: 'm1', name: 'Prismatic Shard', category: 'materials', count: 18, price: 0, shardPrice: 0, description: 'Rare dimensional material.', icon: ASSET_ICONS.prismaticShard },
-  ];
+  // Tallgrass Inventory (Capture Orbs, Potions, Candies)
+  public inventory: InventoryItem[] = [...TALLGRASS_SHOP_CATALOG];
 
-  // Real Player Marketplace (Zero bots)
+  // Global Player Marketplace (Zero bots)
   public marketListings: MarketListing[] = [];
 
   // Playable Overworld Raid Boss
@@ -110,9 +110,8 @@ export class GameStateManager {
   public wildCombatant: Active1v1Combatant | null = null;
   public combatLogs: CombatLogEntry[] = [];
 
-  // Floating Combat Numbers & Attack Laser Beams
-  public floatingTexts: { id: string; text: string; color: string; x: number; y: number; opacity: number }[] = [];
-  public attackBeams: { id: string; fromX: number; fromY: number; toX: number; toY: number; color: string; life: number }[] = [];
+  // Active Main-Series Gym Battle Session (Modal Arena)
+  public activeGymBattle: GymBattleSession | null = null;
 
   // Selected Throwing Ball for manual capture
   public selectedThrowingBall: string = 'b1';
@@ -120,6 +119,7 @@ export class GameStateManager {
   // Reactive listeners
   private subscribers: Array<() => void> = [];
   private combatTimer: number | null = null;
+  private lastTickTimestamp: number = performance.now();
 
   public static getInstance(): GameStateManager {
     if (!GameStateManager.instance) {
@@ -145,23 +145,48 @@ export class GameStateManager {
   }
 
   private initStarterSquad() {
-    const charizard = createPokemonInstanceByDex(6, 15);
-    const pikachu = createPokemonInstanceByDex(25, 12);
-    const blastoise = createPokemonInstanceByDex(9, 14);
-    const venusaur = createPokemonInstanceByDex(3, 13);
-    const lucario = createPokemonInstanceByDex(448, 16, 'Radiant');
+    const charizard = createPokemonInstanceByDex(6, 12);
+    const pikachu = createPokemonInstanceByDex(25, 10);
+    const blastoise = createPokemonInstanceByDex(9, 11);
+    const venusaur = createPokemonInstanceByDex(3, 10);
+    const lucario = createPokemonInstanceByDex(448, 12, 'Radiant');
 
     this.squad = [charizard, pikachu, blastoise, venusaur, lucario];
     this.squad.forEach(p => this.pokedexCaught.add(p.dexNumber));
 
-    this.buddy = createPokemonInstanceByDex(778, 12, 'Shiny');
+    this.buddy = createPokemonInstanceByDex(778, 10, 'Shiny');
     this.buddyData.pokemonId = this.buddy.id;
     this.pokedexCaught.add(this.buddy.dexNumber);
 
-    this.pcBox.push(createPokemonInstanceByDex(133, 10)); // Eevee
-    this.pcBox.push(createPokemonInstanceByDex(94, 18, 'Ethereal')); // Gengar
+    this.pcBox.push(createPokemonInstanceByDex(133, 8)); // Eevee
+    this.pcBox.push(createPokemonInstanceByDex(94, 12, 'Ethereal')); // Gengar
+    this.pcBox.push(createPokemonInstanceByDex(143, 12)); // Snorlax
+    this.pcBox.push(createPokemonInstanceByDex(10, 5)); // Caterpie
 
     this.init1v1Combatants();
+  }
+
+  public getCurrentGymLeader(): GymLeader | null {
+    const currentRegion = REGIONS_DATA[this.currentRegionIndex];
+    if (!currentRegion) return null;
+    const gym = currentRegion.gyms[this.currentCityIndex] || currentRegion.gyms.find(g => !g.defeated) || currentRegion.gyms[0];
+    return gym;
+  }
+
+  // Hard Level Cap = next undefeated gym leader's ace pokemon level
+  public getHardLevelCap(): number {
+    const currentRegion = REGIONS_DATA[this.currentRegionIndex];
+    const undefeatedGym = currentRegion.gyms.find(g => !g.defeated);
+    if (undefeatedGym) {
+      return undefeatedGym.levelRequirement;
+    }
+    return currentRegion.levelRange[1];
+  }
+
+  public getWavesBeatenInCurrentCity(): number {
+    const gym = this.getCurrentGymLeader();
+    if (!gym) return 0;
+    return this.cityWavesBeaten[gym.id] || 0;
   }
 
   public switchActiveBattler(slotIdx: number) {
@@ -178,11 +203,11 @@ export class GameStateManager {
       targetX: 22,
       targetY: 60,
       facing: 'right',
-      wanderTimer: 2.0,
+      wanderTimer: 3.0,
       lungeX: 0,
       shakeX: 0,
       attackCooldowns: {},
-      lastAttackTimestamp: 0,
+      lastAttackTimestamp: performance.now(),
     };
     this.addLog(`Switched active partner: Go, ${active.speciesName}!`, 'level');
     this.notify();
@@ -200,30 +225,48 @@ export class GameStateManager {
       targetX: 22,
       targetY: 60,
       facing: 'right',
-      wanderTimer: 2.0,
+      wanderTimer: 3.0,
       lungeX: 0,
       shakeX: 0,
       attackCooldowns: {},
-      lastAttackTimestamp: 0,
+      lastAttackTimestamp: performance.now(),
     };
 
     this.spawnWildEncounter();
   }
 
+  // Realistic Spawning: Species per region, gates region legendaries until all 8 region gyms are defeated
   public spawnWildEncounter(forceSupernova: boolean = false) {
     const currentRegion = REGIONS_DATA[this.currentRegionIndex];
     const [minLvl, maxLvl] = currentRegion.levelRange;
+    const currentGym = this.getCurrentGymLeader();
+    const cityTargetLvl = currentGym ? Math.max(minLvl, currentGym.levelRequirement - 3) : minLvl;
+
     const wildLevel = Math.min(
       maxLvl,
-      Math.floor(minLvl + (this.waveNumber % 25) * ((maxLvl - minLvl) / 25) + Math.random() * 4)
+      Math.max(minLvl, Math.floor(cityTargetLvl - 2 + Math.random() * 4))
     );
 
+    const allGymsDefeated = currentRegion.gyms.every(g => g.defeated);
     const [dexMin, dexMax] = currentRegion.dexRange;
-    const randomDex = dexMin + Math.floor(Math.random() * (dexMax - dexMin + 1));
-    const tier: PrismaticTier = forceSupernova ? 'Supernova' : undefined as any;
 
+    let chosenDex: number;
+    // If all gyms defeated in region, 5% chance of region legendary encounter
+    if (allGymsDefeated && currentRegion.legendaryDex && currentRegion.legendaryDex.length > 0 && Math.random() < 0.05) {
+      const legList = currentRegion.legendaryDex;
+      chosenDex = legList[Math.floor(Math.random() * legList.length)];
+    } else {
+      // Pick non-legendary wild species in range
+      let candidate = dexMin + Math.floor(Math.random() * (dexMax - dexMin + 1));
+      if (currentRegion.legendaryDex && currentRegion.legendaryDex.includes(candidate)) {
+        candidate = dexMin + 1; // fall back to basic starter/common
+      }
+      chosenDex = candidate;
+    }
+
+    const tier: PrismaticTier = forceSupernova ? 'Supernova' : undefined as any;
     const wildPokemon = createPokemonInstanceByDex(
-      randomDex,
+      chosenDex,
       wildLevel,
       tier,
       this.buddyData.passiveTree.prismaticResonanceTier
@@ -239,82 +282,61 @@ export class GameStateManager {
       targetX: 75,
       targetY: 42,
       facing: 'left',
-      wanderTimer: 2.5,
+      wanderTimer: 3.5,
       lungeX: 0,
       shakeX: 0,
       attackCooldowns: {},
-      lastAttackTimestamp: 0,
+      lastAttackTimestamp: performance.now(),
     };
 
     if (wildPokemon.prismaticTier !== 'Standard') {
       this.addLog(
-        `⚡ A wild ${wildPokemon.prismaticTier} ${wildPokemon.speciesName} (Lv. ${wildPokemon.level}) appeared in the Meadow!`,
+        `A rare ${wildPokemon.prismaticTier} ${wildPokemon.speciesName} (Lv. ${wildPokemon.level}) appeared in the Meadow!`,
         'prismatic'
       );
     }
-
-    this.notify();
   }
 
+  // Realistic Slowed Combat Engine (~2.5s-3.5s Deliberate Pacing)
   private startCombatLoop() {
+    if (this.combatTimer) clearInterval(this.combatTimer);
+
+    // Run tick every 100ms
     this.combatTimer = window.setInterval(() => {
-      this.process1v1Tick(0.1);
+      this.onCombatTick();
     }, 100);
   }
 
-  private process1v1Tick(delta: number) {
-    const now = Date.now();
+  private onCombatTick() {
+    const now = performance.now();
+    const delta = (now - this.lastTickTimestamp) / 1000;
+    this.lastTickTimestamp = now;
 
-    // 1. UPDATE MEADOW ROAMING & SHAKE / LUNGE TIMERS
-    const updateUnitMotion = (c: Active1v1Combatant, minX: number, maxX: number) => {
-      if (c.lungeX !== 0) {
-        c.lungeX *= 0.75;
-        if (Math.abs(c.lungeX) < 0.2) c.lungeX = 0;
-      }
-      if (c.shakeX !== 0) {
-        c.shakeX *= -0.7;
-        if (Math.abs(c.shakeX) < 0.2) c.shakeX = 0;
-      }
-
-      c.wanderTimer -= delta;
-      if (c.wanderTimer <= 0) {
-        c.wanderTimer = 2.0 + Math.random() * 3.0;
-        c.targetX = minX + Math.random() * (maxX - minX);
-        c.targetY = 35 + Math.random() * 35;
-      }
-
-      const dx = c.targetX - c.x;
-      const dy = c.targetY - c.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > 0.4) {
-        const step = Math.min(dist, 4.0 * delta);
-        c.x += (dx / dist) * step;
-        c.y += (dy / dist) * step;
-      }
-    };
-
-    if (this.playerCombatant) updateUnitMotion(this.playerCombatant, 15, 35);
-    if (this.wildCombatant) updateUnitMotion(this.wildCombatant, 65, 82);
-
-    // Update floating damage texts & attack beams
-    for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
-      const ft = this.floatingTexts[i];
-      ft.y -= 0.8;
-      ft.opacity -= 0.04;
-      if (ft.opacity <= 0) this.floatingTexts.splice(i, 1);
-    }
-    for (let i = this.attackBeams.length - 1; i >= 0; i--) {
-      const b = this.attackBeams[i];
-      b.life -= delta * 4;
-      if (b.life <= 0) this.attackBeams.splice(i, 1);
+    // Reset combat motion decay
+    if (this.playerCombatant) {
+      this.playerCombatant.lungeX *= 0.85;
+      this.playerCombatant.shakeX *= 0.82;
+      if (Math.abs(this.playerCombatant.lungeX) < 0.2) this.playerCombatant.lungeX = 0;
+      if (Math.abs(this.playerCombatant.shakeX) < 0.2) this.playerCombatant.shakeX = 0;
     }
 
-    if (!this.isBattling || !this.playerCombatant || !this.wildCombatant) {
-      this.notify();
+    if (this.wildCombatant) {
+      this.wildCombatant.lungeX *= 0.85;
+      this.wildCombatant.shakeX *= 0.82;
+      if (Math.abs(this.wildCombatant.lungeX) < 0.2) this.wildCombatant.lungeX = 0;
+      if (Math.abs(this.wildCombatant.shakeX) < 0.2) this.wildCombatant.shakeX = 0;
+    }
+
+    // Pause overworld loop when gym battle modal is active
+    if (this.activeGymBattle) {
       return;
     }
 
-    // 2. CHECK REVIVE IF PLAYER FAINTED
+    if (!this.isBattling || !this.playerCombatant || !this.wildCombatant) {
+      return;
+    }
+
+    // 1. Revive player if fainted
     if (this.playerCombatant.currentHp <= 0) {
       const nextLivingIdx = this.squad.findIndex(p => p.stats.hp > 0 && p.id !== this.playerCombatant?.pokemon.id);
       if (nextLivingIdx !== -1) {
@@ -326,11 +348,10 @@ export class GameStateManager {
       }
     }
 
-    // 3. TALLGRASS BATTLE TICK: Player auto-attack or manual trigger
-    // Tallgrass Mechanic: If wild is low HP (<25%), prefer "Gentle Tap" so as NOT to knock it out!
+    // 2. Slowed Turn Execution: Partner attacks roughly every 2.8s
     const isWildLowHp = this.wildCombatant.currentHp < this.wildCombatant.maxHp * 0.25;
     const moves = this.playerCombatant.pokemon.moves;
-    
+
     let chosenMove = moves.find(m => (this.playerCombatant!.attackCooldowns[m.id] || 0) <= 0);
     if (isWildLowHp) {
       const gentle = moves.find(m => m.isGentleTap);
@@ -344,46 +365,53 @@ export class GameStateManager {
       if (cd > 0) this.playerCombatant!.attackCooldowns[m.id] = Math.max(0, cd - delta);
     });
 
-    if (chosenMove && (now - this.playerCombatant.lastAttackTimestamp) > (chosenMove.cooldown * 650)) {
+    // Deliberate 2.8s cadence
+    if (chosenMove && (now - this.playerCombatant.lastAttackTimestamp) > 2800) {
       this.playerCombatant.lastAttackTimestamp = now;
-      this.playerCombatant.attackCooldowns[chosenMove.id] = chosenMove.cooldown;
+      this.playerCombatant.attackCooldowns[chosenMove.id] = 2.8;
       this.executeTallgrassMove(this.playerCombatant, this.wildCombatant, chosenMove);
     }
 
-    // 4. Wild Pokemon counter-attack
+    // 3. Wild Pokémon counter-attack (3.2s cadence)
     const wildMove = this.wildCombatant.pokemon.moves[1] || this.wildCombatant.pokemon.moves[0];
     const wCd = this.wildCombatant.attackCooldowns['default'] || 0;
-    if (wCd <= 0) {
-      this.wildCombatant.attackCooldowns['default'] = 2.4;
+    if (wCd <= 0 && (now - this.wildCombatant.lastAttackTimestamp) > 3200) {
+      this.wildCombatant.lastAttackTimestamp = now;
+      this.wildCombatant.attackCooldowns['default'] = 3.2;
       this.executeTallgrassMove(this.wildCombatant, this.playerCombatant, wildMove as Move);
     } else {
       this.wildCombatant.attackCooldowns['default'] = Math.max(0, wCd - delta);
     }
 
-    // 5. AUTO-CATCH TRIGGER CHECK
+    // 4. Auto-catch check
     if (this.autoCatchSettings.enabled && this.wildCombatant.currentHp > 0) {
       const isPrismatic = this.wildCombatant.pokemon.prismaticTier !== 'Standard';
       const isUnreg = !this.pokedexCaught.has(this.wildCombatant.pokemon.dexNumber);
-      const lowHp = this.wildCombatant.currentHp < this.wildCombatant.maxHp * 0.45;
+      const lowHp = this.wildCombatant.currentHp < this.wildCombatant.maxHp * 0.35;
 
       const shouldThrow =
-        (isPrismatic) ||
+        isPrismatic ||
         (this.autoCatchSettings.catchUnregistered && isUnreg) ||
         (!this.autoCatchSettings.targetPrismaticOnly && lowHp);
 
-      if (shouldThrow && Math.random() < 0.22) {
+      if (shouldThrow && Math.random() < 0.12) {
         this.attemptCatch(this.wildCombatant);
       }
     }
 
-    // 6. WILD FAINT RESOLUTION
+    // 5. Wild faint resolution
     if (this.wildCombatant.currentHp <= 0) {
       this.waveNumber++;
-      const goldAward = Math.floor(140 * (1 + this.buddyData.passiveTree.goldHoarderTier * 0.4) * (1 + this.currentRegionIndex * 0.6));
+      const currentGym = this.getCurrentGymLeader();
+      if (currentGym) {
+        this.cityWavesBeaten[currentGym.id] = (this.cityWavesBeaten[currentGym.id] || 0) + 1;
+      }
+
+      const goldAward = Math.floor(120 * (1 + this.buddyData.passiveTree.goldHoarderTier * 0.4) * (1 + this.currentRegionIndex * 0.5));
       this.pokeDollars += goldAward;
 
-      if (Math.random() < 0.4 + this.buddyData.passiveTree.autoDowsingTier * 0.15) {
-        const shardsAward = 8 + Math.floor(Math.random() * 10);
+      if (Math.random() < 0.35 + this.buddyData.passiveTree.autoDowsingTier * 0.15) {
+        const shardsAward = 6 + Math.floor(Math.random() * 8);
         this.prismaticShards += shardsAward;
       }
 
@@ -393,71 +421,57 @@ export class GameStateManager {
     this.notify();
   }
 
-  // TALLGRASS MOVE EXECUTION (Gentle Tap, Finishing Risk, Type Multiplier)
+  // Move Execution with clean motion (idle bob, forward lunge, hit shake)
   public executeTallgrassMove(attacker: Active1v1Combatant, target: Active1v1Combatant, move: Move) {
     const lvl = attacker.pokemon.level;
     const atk = attacker.pokemon.stats.atk;
     const def = target.pokemon.stats.def;
 
-    // Type effectiveness multiplier (0x, 0.5x, 1x, 2x, 4x)
     const typeMult = calculateTypeMultiplier(move.type, target.pokemon.types);
     const rawDmg = Math.floor(((((2 * lvl / 5 + 2) * move.power * (atk / Math.max(1, def))) / 50) + 2) * typeMult);
-    const variance = 0.85 + Math.random() * 0.3;
+    const variance = 0.88 + Math.random() * 0.24;
     let damage = Math.max(1, Math.floor(rawDmg * variance));
 
-    // TALLGRASS GENTLE TAP MECHANIC:
-    // Guarantees leaving target with at least 1 HP, NEVER knocking it out accidentally!
+    // Tallgrass Gentle Tap Mechanic
     if (move.isGentleTap && damage >= target.currentHp) {
       damage = Math.max(1, target.currentHp - 1);
     }
 
     target.currentHp = Math.max(0, target.currentHp - damage);
 
-    // Dynamic animations: forward attack lunge and recoil shake
-    attacker.lungeX = attacker.isPlayer ? 14 : -14;
-    target.shakeX = attacker.isPlayer ? 8 : -8;
-
-    const beamColor = move.type === 'Fire' ? '#f97316' : move.type === 'Water' ? '#38bdf8' : move.type === 'Electric' ? '#facc15' : move.type === 'Grass' ? '#4ade80' : '#c084fc';
-    this.attackBeams.push({
-      id: `beam_${Date.now()}`,
-      fromX: attacker.x,
-      fromY: attacker.y,
-      toX: target.x,
-      toY: target.y,
-      color: beamColor,
-      life: 1.0,
-    });
+    // Natural Pokémon combat motion (forward lunge, hit shake)
+    attacker.lungeX = attacker.isPlayer ? 16 : -16;
+    target.shakeX = attacker.isPlayer ? 10 : -10;
 
     let effectivenessText = '';
     if (typeMult >= 2.0) effectivenessText = ' (Super effective!)';
     else if (typeMult <= 0.5 && typeMult > 0) effectivenessText = ' (Not very effective)';
     else if (typeMult === 0) effectivenessText = ' (No effect!)';
 
-    this.floatingTexts.push({
-      id: `dmg_${Date.now()}_${Math.random()}`,
-      text: `-${damage}${typeMult >= 2.0 ? '!' : ''}`,
-      color: typeMult >= 2.0 ? '#fbbf24' : attacker.isPlayer ? '#ef4444' : '#f97316',
-      x: target.x,
-      y: target.y - 8,
-      opacity: 1.0,
-    });
-
     if (move.isGentleTap) {
-      this.addLog(`✨ ${attacker.pokemon.speciesName} used Gentle Tap! Target weakened safely to ${target.currentHp} HP.`, 'level');
+      this.addLog(`${attacker.pokemon.speciesName} used Gentle Tap! Target preserved at ${target.currentHp} HP.`, 'level');
     } else {
-      this.addLog(`${attacker.pokemon.speciesName} used ${move.name}${effectivenessText}! Dealt ${damage} DMG.`, 'damage');
+      this.addLog(`${attacker.pokemon.speciesName} used ${move.name}${effectivenessText}! (-${damage} HP)`, 'damage');
     }
 
-    if (target.currentHp <= 0) {
-      if (attacker.isPlayer) {
-        this.gainExp(attacker.pokemon, target.pokemon.level * 50);
-        this.addLog(`${attacker.pokemon.speciesName} fainted wild ${target.pokemon.speciesName}!`, 'faint');
-      }
+    if (target.currentHp <= 0 && attacker.isPlayer) {
+      this.gainExp(attacker.pokemon, target.pokemon.level * 45);
+      this.addLog(`${attacker.pokemon.speciesName} defeated wild ${target.pokemon.speciesName}!`, 'faint');
     }
+
     this.notify();
   }
 
-  // TALLGRASS CAPTURE MECHANIC
+  // Capture calculation using species catchRate and orb multiplier
+  public calculateCatchOdds(enemy: Active1v1Combatant, ballMultiplier: number = 1.0): number {
+    if (ballMultiplier >= 255.0) return 100;
+    const speciesRate = enemy.pokemon.catchRate || 100; // 3 to 255
+    const hpFactor = 1 - (enemy.currentHp / Math.max(1, enemy.maxHp)); // 0 when full, ~0.99 when 1 HP
+    const baseFraction = (speciesRate / 255.0) * (0.3 + (hpFactor * 0.7));
+    const finalRate = Math.min(0.99, baseFraction * ballMultiplier);
+    return Math.max(1, Math.floor(finalRate * 100));
+  }
+
   public throwCaptureOrb(ballId?: string) {
     if (!this.wildCombatant || this.wildCombatant.currentHp <= 0) return;
     const targetBallId = ballId || this.selectedThrowingBall || 'b1';
@@ -467,25 +481,11 @@ export class GameStateManager {
     this.attemptCatch(this.wildCombatant, ballItem);
   }
 
-  // Calculate catch odds (HP percentage + Capture Orb multiplier)
-  public calculateCatchOdds(enemy: Active1v1Combatant, ballMultiplier: number = 1.0): number {
-    if (ballMultiplier >= 255.0) return 100;
-    const hpFactor = 1 - (enemy.currentHp / enemy.maxHp);
-    const baseRate = 0.35 + (hpFactor * 0.55); // 35% base up to 90% when target is at 1 HP
-    const finalRate = Math.min(0.98, baseRate * (ballMultiplier / 1.0));
-    return Math.floor(finalRate * 100);
-  }
-
   private attemptCatch(enemy: Active1v1Combatant, specificBall?: InventoryItem) {
-    const ballItem = specificBall || this.inventory.find(i => i.id === (
-      this.autoCatchSettings.preferredBall === 'ultra' ? 'b3' :
-      this.autoCatchSettings.preferredBall === 'prismatic' ? 'b4' :
-      this.autoCatchSettings.preferredBall === 'great' ? 'b2' : 'b1'
-    )) || this.inventory.find(i => i.category === 'balls' && i.count > 0);
-
+    const ballItem = specificBall || this.inventory.find(i => i.id === this.selectedThrowingBall && i.count > 0) || this.inventory.find(i => i.category === 'orbs' && i.count > 0);
     if (!ballItem || ballItem.count <= 0) return;
-    ballItem.count--;
 
+    ballItem.count--;
     const multiplier = ballItem.catchMultiplier || 1.0;
     const oddsPercent = this.calculateCatchOdds(enemy, multiplier);
 
@@ -503,65 +503,23 @@ export class GameStateManager {
       }
 
       this.addLog(
-        `🎉 Successfully captured ${enemy.pokemon.prismaticTier !== 'Standard' ? enemy.pokemon.prismaticTier + ' ' : ''}${enemy.pokemon.speciesName} (Lv. ${enemy.pokemon.level}) with ${ballItem.name}!`,
+        `Captured ${enemy.pokemon.prismaticTier !== 'Standard' ? enemy.pokemon.prismaticTier + ' ' : ''}${enemy.pokemon.speciesName} (Lv. ${enemy.pokemon.level}) with ${ballItem.name}!`,
         'catch'
       );
-
-      this.floatingTexts.push({
-        id: `c_${Date.now()}`,
-        text: 'CAUGHT! ⭐',
-        color: '#eab308',
-        x: enemy.x,
-        y: enemy.y - 12,
-        opacity: 1.0,
-      });
-
       this.spawnWildEncounter();
     } else {
-      this.floatingTexts.push({
-        id: `f_${Date.now()}`,
-        text: 'Broke free!',
-        color: '#94a3b8',
-        x: enemy.x,
-        y: enemy.y - 12,
-        opacity: 1.0,
-      });
+      this.addLog(`The wild ${enemy.pokemon.speciesName} broke free from the ${ballItem.name}!`, 'level');
     }
     this.notify();
   }
 
-  // Playable Overworld Raid Attack
-  public strikeRaidBoss() {
-    if (!this.activeRaid.active) return;
-    const playerAtk = this.squad.reduce((sum, p) => sum + p.stats.atk, 0);
-    const dmg = Math.floor(playerAtk * (2.0 + Math.random() * 0.8));
-
-    this.activeRaid.currentHp = Math.max(0, this.activeRaid.currentHp - dmg);
-    this.activeRaid.totalDamageDealt += dmg;
-
-    const goldEarned = Math.floor(dmg * 0.15);
-    const shardsEarned = Math.floor(dmg * 0.005);
-    this.pokeDollars += goldEarned;
-    this.prismaticShards += shardsEarned;
-
-    this.addLog(`⚔️ Struck Raid Boss for ${dmg.toLocaleString()} DMG! Earned ₽${goldEarned} and ${shardsEarned} 💎`, 'damage');
-
-    if (this.activeRaid.currentHp <= 0) {
-      this.addLog(`🏆 RAID VICTORY: Defeated ${this.activeRaid.name}! Awarded +5,000 Shards & Legendary Dex entry!`, 'prismatic');
-      this.prismaticShards += 5000;
-      this.pokeDollars += 50000;
-      this.activeRaid.currentHp = this.activeRaid.maxHp;
-    }
-
-    this.notify();
-  }
-
+  // Hard Level Cap Enforced
   public gainExp(pokemon: PokemonData, expAmount: number) {
-    const currentRegion = REGIONS_DATA[this.currentRegionIndex];
-    const currentGym = currentRegion.gyms.find(g => !g.defeated);
-    const maxCap = currentGym ? currentGym.levelRequirement : currentRegion.levelRange[1];
-
-    if (pokemon.level >= maxCap) return;
+    const cap = this.getHardLevelCap();
+    if (pokemon.level >= cap) {
+      pokemon.currentExp = 0;
+      return;
+    }
 
     pokemon.currentExp += expAmount;
     if (pokemon.currentExp >= pokemon.expToNextLevel) {
@@ -575,30 +533,127 @@ export class GameStateManager {
         this.playerCombatant.currentHp = pokemon.stats.maxHp;
       }
 
-      this.addLog(`⭐ ${pokemon.speciesName} leveled up to Lv. ${pokemon.level}!`, 'level');
+      this.addLog(`${pokemon.speciesName} grew to Lv. ${pokemon.level}!`, 'level');
     }
     this.notify();
   }
 
-  public switchRegion(regionIndex: number) {
-    if (regionIndex < 0 || regionIndex >= REGIONS_DATA.length) return;
-    this.currentRegionIndex = regionIndex;
-    const region = REGIONS_DATA[regionIndex];
-    this.waveNumber = 1;
-    this.spawnWildEncounter();
-    this.addLog(`🌍 Traveled to Region ${region.id}: ${region.name} (${region.generation})`, 'prismatic');
+  // START AUTHENTIC GYM BATTLE SESSION
+  public startGymBattle(gym: GymLeader) {
+    const playerFirst = this.squad[this.activeBattlerSlot] || this.squad[0];
+    const leaderFirst = gym.party[0];
+
+    // Compute leader initial HP
+    const leaderMaxHp = Math.floor((((2 * 65 + 15) / 100) * leaderFirst.level) + 10 + leaderFirst.level + 15);
+
+    this.activeGymBattle = {
+      gymId: gym.id,
+      gymLeader: gym,
+      trainerCurrentPokemonIdx: this.activeBattlerSlot,
+      leaderCurrentPokemonIdx: 0,
+      leaderCurrentHp: leaderMaxHp,
+      leaderMaxHp: leaderMaxHp,
+      playerCurrentHp: playerFirst.stats.hp,
+      playerMaxHp: playerFirst.stats.maxHp,
+      turnPhase: 'player_choose',
+      battleDialog: `Leader ${gym.name}: "I am the Gym Leader of ${gym.cityName}! Show me the bond between you and your Pokémon!" Leader ${gym.name} sent out ${leaderFirst.name}!`,
+      isCompleted: false,
+    };
+
     this.notify();
   }
 
-  public defeatGymLeader(gymId: number) {
+  public executeGymBattleTurn(playerMove: Move) {
+    const session = this.activeGymBattle;
+    if (!session || session.turnPhase !== 'player_choose') return;
+
+    session.turnPhase = 'player_attack';
+    const playerPkmn = this.squad[session.trainerCurrentPokemonIdx];
+    const leaderPkmn = session.gymLeader.party[session.leaderCurrentPokemonIdx];
+
+    // 1. Player Attack
+    const typeMult = calculateTypeMultiplier(playerMove.type, leaderPkmn.types);
+    const rawDmg = Math.floor(((((2 * playerPkmn.level / 5 + 2) * playerMove.power * (playerPkmn.stats.atk / 65)) / 50) + 2) * typeMult);
+    const damage = Math.max(1, Math.floor(rawDmg * (0.9 + Math.random() * 0.2)));
+
+    session.leaderCurrentHp = Math.max(0, session.leaderCurrentHp - damage);
+
+    let eff = '';
+    if (typeMult >= 2.0) eff = " It's super effective!";
+    else if (typeMult <= 0.5 && typeMult > 0) eff = " It's not very effective...";
+
+    session.battleDialog = `${playerPkmn.speciesName} used ${playerMove.name}!${eff} Dealt ${damage} damage to ${leaderPkmn.name}!`;
+    this.notify();
+
+    // Check if Leader Pokemon fainted
+    setTimeout(() => {
+      if (session.leaderCurrentHp <= 0) {
+        if (session.leaderCurrentPokemonIdx + 1 < session.gymLeader.party.length) {
+          session.leaderCurrentPokemonIdx++;
+          const nextLeaderPkmn = session.gymLeader.party[session.leaderCurrentPokemonIdx];
+          session.leaderMaxHp = Math.floor((((2 * 75 + 15) / 100) * nextLeaderPkmn.level) + 10 + nextLeaderPkmn.level + 15);
+          session.leaderCurrentHp = session.leaderMaxHp;
+          session.turnPhase = 'player_choose';
+          session.battleDialog = `Leader ${session.gymLeader.name}'s ${leaderPkmn.name} fainted! Leader sent out ${nextLeaderPkmn.name}!`;
+          this.notify();
+          return;
+        } else {
+          // Gym Victory!
+          session.turnPhase = 'victory';
+          session.battleDialog = `You defeated Gym Leader ${session.gymLeader.name}! "Remarkable strength! You have earned the ${session.gymLeader.badgeName}!"`;
+          this.notify();
+          return;
+        }
+      }
+
+      // 2. Leader Counter Attack
+      session.turnPhase = 'leader_attack';
+      const enemyDmg = Math.floor(((((2 * leaderPkmn.level / 5 + 2) * 60 * (65 / Math.max(1, playerPkmn.stats.def))) / 50) + 2) * (0.85 + Math.random() * 0.3));
+      session.playerCurrentHp = Math.max(0, session.playerCurrentHp - enemyDmg);
+      playerPkmn.stats.hp = session.playerCurrentHp;
+
+      session.battleDialog = `Leader ${session.gymLeader.name}'s ${leaderPkmn.name} struck back! ${playerPkmn.speciesName} took ${enemyDmg} damage!`;
+      this.notify();
+
+      setTimeout(() => {
+        if (session.playerCurrentHp <= 0) {
+          // Check next squad member
+          const nextIdx = this.squad.findIndex((p, idx) => idx > session.trainerCurrentPokemonIdx && p.stats.hp > 0);
+          if (nextIdx !== -1) {
+            session.trainerCurrentPokemonIdx = nextIdx;
+            const nextP = this.squad[nextIdx];
+            session.playerCurrentHp = nextP.stats.hp;
+            session.playerMaxHp = nextP.stats.maxHp;
+            session.turnPhase = 'player_choose';
+            session.battleDialog = `${playerPkmn.speciesName} fainted! Go, ${nextP.speciesName}!`;
+          } else {
+            session.turnPhase = 'defeat';
+            session.battleDialog = `All of your Pokémon fainted! You lost the Gym battle...`;
+          }
+        } else {
+          session.turnPhase = 'player_choose';
+        }
+        this.notify();
+      }, 1000);
+    }, 1000);
+  }
+
+  public claimGymVictory() {
+    const session = this.activeGymBattle;
+    if (!session) return;
+
+    session.gymLeader.defeated = true;
+    this.pokeDollars += session.gymLeader.rewardDollars;
+    this.prismaticShards += session.gymLeader.rewardShards;
+
+    // Squad Exp bonus & Full heal
+    this.squad.forEach(p => {
+      p.stats.hp = p.stats.maxHp;
+      this.gainExp(p, session.gymLeader.levelRequirement * 80);
+    });
+
+    // Unlock next gym or next region
     const currentRegion = REGIONS_DATA[this.currentRegionIndex];
-    const gym = currentRegion.gyms.find(g => g.id === gymId);
-    if (!gym || gym.defeated) return;
-
-    gym.defeated = true;
-    this.prismaticShards += gym.rewardShards;
-    this.pokeDollars += gym.rewardDollars;
-
     const nextGym = currentRegion.gyms.find(g => !g.defeated);
     if (nextGym) {
       nextGym.unlocked = true;
@@ -609,7 +664,41 @@ export class GameStateManager {
       }
     }
 
-    this.addLog(`🏆 Defeated Gym Leader ${gym.name}! Earned ${gym.badgeName} (+₽${gym.rewardDollars.toLocaleString()}) and unlocked Level Cap!`, 'prismatic');
+    this.addLog(`Earned the ${session.gymLeader.badgeName}! Level Cap increased!`, 'prismatic');
+    this.activeGymBattle = null;
+    this.notify();
+  }
+
+  public forfeitGymBattle() {
+    this.squad.forEach(p => p.stats.hp = p.stats.maxHp);
+    this.activeGymBattle = null;
+    this.notify();
+  }
+
+  // Teleport to city / switch region
+  public travelToCity(regionIdx: number, cityIdx: number) {
+    if (regionIdx < 0 || regionIdx >= REGIONS_DATA.length) return;
+    this.currentRegionIndex = regionIdx;
+    this.currentCityIndex = cityIdx;
+    this.waveNumber = 1;
+    this.spawnWildEncounter();
+    const city = REGIONS_DATA[regionIdx].gyms[cityIdx];
+    this.addLog(`Traveled to ${city.cityName} in ${REGIONS_DATA[regionIdx].name}!`, 'level');
+    this.notify();
+  }
+
+  // Swap squad member with PC Box
+  public swapSquadWithPC(squadIdx: number, pcIdx: number) {
+    if (squadIdx < 0 || squadIdx >= this.squad.length) return;
+    if (pcIdx < 0 || pcIdx >= this.pcBox.length) return;
+
+    const temp = this.squad[squadIdx];
+    this.squad[squadIdx] = this.pcBox[pcIdx];
+    this.pcBox[pcIdx] = temp;
+
+    if (this.activeBattlerSlot === squadIdx) {
+      this.switchActiveBattler(squadIdx);
+    }
     this.notify();
   }
 
@@ -619,46 +708,29 @@ export class GameStateManager {
     this.notify();
   }
 
-  public swapSquadMember(squadIndex: number, pcBoxIndex: number) {
-    if (squadIndex < 0 || squadIndex >= this.squad.length) return;
-    if (pcBoxIndex < 0 || pcBoxIndex >= this.pcBox.length) return;
+  public strikeRaidBoss() {
+    if (!this.activeRaid.active) return;
+    const playerAtk = this.squad.reduce((sum, p) => sum + p.stats.atk, 0);
+    const dmg = Math.floor(playerAtk * (2.2 + Math.random() * 0.6));
 
-    const currentSquadPkmn = this.squad[squadIndex];
-    const newSquadPkmn = this.pcBox[pcBoxIndex];
+    this.activeRaid.currentHp = Math.max(0, this.activeRaid.currentHp - dmg);
+    this.activeRaid.totalDamageDealt += dmg;
 
-    this.squad[squadIndex] = newSquadPkmn;
-    this.pcBox[pcBoxIndex] = currentSquadPkmn;
+    const goldEarned = Math.floor(dmg * 0.15);
+    const shardsEarned = Math.floor(dmg * 0.005);
+    this.pokeDollars += goldEarned;
+    this.prismaticShards += shardsEarned;
 
-    if (this.activeBattlerSlot === squadIndex) {
-      this.switchActiveBattler(squadIndex);
+    this.addLog(`Struck Raid Boss for ${dmg.toLocaleString()} DMG! Earned ₽${goldEarned} and ${shardsEarned} Shards.`, 'damage');
+
+    if (this.activeRaid.currentHp <= 0) {
+      this.addLog(`Defeated ${this.activeRaid.name}! Awarded +5,000 Shards!`, 'prismatic');
+      this.prismaticShards += 5000;
+      this.pokeDollars += 50000;
+      this.activeRaid.currentHp = this.activeRaid.maxHp;
     }
-    this.notify();
-  }
 
-  public listPokemonOnMarket(pcIndex: number, price: number, currency: 'dollars' | 'shards') {
-    if (pcIndex < 0 || pcIndex >= this.pcBox.length) return;
-    const pkmn = this.pcBox.splice(pcIndex, 1)[0];
-    this.marketListings.push({
-      id: `list_${Date.now()}_${Math.random()}`,
-      sellerTrainerName: 'You (Player)',
-      isPlayerListing: true,
-      pokemon: pkmn,
-      price,
-      currency,
-      listedTimestamp: Date.now(),
-    });
-    this.addLog(`Listed ${pkmn.speciesName} on the Global Market for ${price} ${currency}!`, 'catch');
     this.notify();
-  }
-
-  public cancelMarketListing(listingId: string) {
-    const idx = this.marketListings.findIndex(l => l.id === listingId);
-    if (idx !== -1) {
-      const listing = this.marketListings.splice(idx, 1)[0];
-      this.pcBox.push(listing.pokemon);
-      this.addLog(`Reclaimed ${listing.pokemon.speciesName} to PC Box.`, 'level');
-      this.notify();
-    }
   }
 
   public addLog(message: string, type: CombatLogEntry['type']) {

@@ -1,4 +1,4 @@
-// Tallgrass 1v1 Battle Mechanics & Data Types
+// Complete Data Types for Pokémon: Spectra Chronicles
 
 export type PrismaticTier = 'Standard' | 'Shiny' | 'Radiant' | 'Ethereal' | 'Supernova';
 
@@ -12,10 +12,9 @@ export interface Move {
   name: string;
   type: ElementalType;
   power: number;
-  accuracy: number; // e.g. 100
+  accuracy: number;
   cooldown: number; // in seconds
-  isGentleTap?: boolean; // Tallgrass Mechanic: Never KOs target, always leaves at least 1 HP!
-  isFinishingRisk?: boolean; // Tallgrass Flag: warns player this attack risks knocking out target
+  isGentleTap?: boolean;
   description: string;
 }
 
@@ -72,9 +71,10 @@ export interface PokemonData {
   scale: number;
   spriteUrl: string;
   artworkUrl: string;
+  catchRate: number; // 3 (legendary) to 255 (common)
+  rarityTier: 'Common' | 'Uncommon' | 'Rare' | 'Legendary';
 }
 
-// 1v1 Meadow Active Combatant (Tallgrass Battle State)
 export interface Active1v1Combatant {
   pokemon: PokemonData;
   isPlayer: boolean;
@@ -92,39 +92,24 @@ export interface Active1v1Combatant {
   lastAttackTimestamp: number;
 }
 
-export interface BuddyData {
-  pokemonId: string;
-  affectionLevel: number;
-  passiveTree: {
-    prismaticResonanceTier: number;
-    autoDowsingTier: number;
-    hasteAuraTier: number;
-    goldHoarderTier: number;
-  };
-}
-
-export interface AutoCatchSettings {
-  enabled: boolean;
-  targetPrismaticOnly: boolean;
-  minTierToThrow: PrismaticTier;
-  catchUnregistered: boolean;
-  autoFaintStandardDuplicates: boolean;
-  preferredBall: 'poke' | 'great' | 'ultra' | 'prismatic';
-}
-
 export interface GymLeader {
   id: number;
   region: number;
+  cityName: string;
   name: string;
   badgeName: string;
   badgeIcon: string;
+  type: ElementalType;
   levelRequirement: number;
   acePokemon: string;
   aceDexNumber: number;
   rewardShards: number;
   rewardDollars: number;
+  wavesRequiredToChallenge: number;
   unlocked: boolean;
   defeated: boolean;
+  // Full gym leader party for real main-series battles
+  party: { dex: number; name: string; level: number; types: [ElementalType] | [ElementalType, ElementalType] }[];
 }
 
 export interface RegionInfo {
@@ -136,13 +121,14 @@ export interface RegionInfo {
   biomeTheme: 'kanto_grass' | 'johto_autumn' | 'hoenn_volcano' | 'sinnoh_snow' | 'unova_city' | 'kalos_fairy' | 'alola_beach' | 'galar_wild' | 'paldea_crater';
   bgGradient: string;
   badgeIcon: string;
+  legendaryDex: number[]; // Unlocked only after clearing all gyms in region
   gyms: GymLeader[];
 }
 
 export interface InventoryItem {
   id: string;
   name: string;
-  category: 'balls' | 'potions' | 'held' | 'materials' | 'shaders';
+  category: 'balls' | 'potions' | 'held' | 'materials' | 'orbs';
   count: number;
   price: number;
   shardPrice?: number;
@@ -175,4 +161,19 @@ export interface RaidBossState {
   totalDamageDealt: number;
   spriteUrl: string;
   artworkUrl: string;
+}
+
+// Active Animated Gym Battle Arena Session
+export interface GymBattleSession {
+  gymId: number;
+  gymLeader: GymLeader;
+  trainerCurrentPokemonIdx: number;
+  leaderCurrentPokemonIdx: number;
+  leaderCurrentHp: number;
+  leaderMaxHp: number;
+  playerCurrentHp: number;
+  playerMaxHp: number;
+  turnPhase: 'player_choose' | 'player_attack' | 'leader_attack' | 'victory' | 'defeat';
+  battleDialog: string;
+  isCompleted: boolean;
 }
