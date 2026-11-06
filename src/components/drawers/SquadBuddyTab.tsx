@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { GameStateManager } from '../../state/GameStateManager';
-import { getPrismaticSpriteStyle } from '../../data/pokemonCatalog';
-import { Compass, ArrowRightLeft, Shield, Sparkles } from 'lucide-react';
-import { PokemonData } from '../../types/game';
+import { getPrismaticSpriteStyle, TYPE_PALETTES } from '../../data/pokemonCatalog';
+import { Compass, ArrowRightLeft, Shield, Sparkles, HeartPulse } from 'lucide-react';
 
 interface SquadBuddyTabProps {
   state: GameStateManager;
@@ -21,15 +20,28 @@ export const SquadBuddyTab: React.FC<SquadBuddyTabProps> = ({ state }) => {
       <div className="bg-slate-900/90 backdrop-blur-xl p-4 rounded-3xl border border-slate-800">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Active Squad (5 Battle Slots)
+            Active Squad ({state.squad.length}/5 Pokémon)
           </span>
           <span className="text-xs text-indigo-400 font-medium">
-            Tap a slot to select or swap with PC Box below
+            Tap a slot to switch active battler or swap with PC Box
           </span>
         </div>
 
         <div className="grid grid-cols-5 gap-2 sm:gap-3">
-          {state.squad.map((pkmn, idx) => {
+          {[0, 1, 2, 3, 4].map(idx => {
+            const pkmn = state.squad[idx];
+            if (!pkmn) {
+              return (
+                <div
+                  key={`empty_${idx}`}
+                  className="p-2.5 rounded-2xl border border-dashed border-slate-800/80 bg-slate-950/40 text-center flex flex-col items-center justify-center h-36 text-slate-600 text-xs font-mono"
+                >
+                  <span>Slot #{idx + 1}</span>
+                  <span className="text-[10px] text-slate-700 mt-1">Empty</span>
+                </div>
+              );
+            }
+
             const isActiveBattler = state.activeBattlerSlot === idx;
             const isSelected = selectedSquadSlot === idx;
             const style = getPrismaticSpriteStyle(pkmn.prismaticTier);
@@ -39,10 +51,14 @@ export const SquadBuddyTab: React.FC<SquadBuddyTabProps> = ({ state }) => {
                 key={pkmn.id}
                 onClick={() => {
                   setSelectedSquadSlot(idx);
-                  state.switchActiveBattler(idx);
+                  if (!pkmn.isFainted) {
+                    state.switchActiveBattler(idx);
+                  }
                 }}
                 className={`p-2.5 rounded-2xl border text-center transition-all relative flex flex-col items-center justify-between h-36 ${
-                  isActiveBattler
+                  pkmn.isFainted
+                    ? 'bg-rose-950/30 border-rose-500/50 opacity-70'
+                    : isActiveBattler
                     ? 'bg-indigo-600/25 border-indigo-500 ring-2 ring-indigo-500/50 text-white shadow-xl'
                     : isSelected
                     ? 'bg-slate-800 border-slate-600 text-slate-200'
@@ -51,7 +67,11 @@ export const SquadBuddyTab: React.FC<SquadBuddyTabProps> = ({ state }) => {
               >
                 <div className="w-full flex items-center justify-between px-1">
                   <span className="text-[10px] text-cyan-400 font-mono font-bold">Lv.{pkmn.level}</span>
-                  {isActiveBattler && (
+                  {pkmn.isFainted ? (
+                    <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                      Fainted
+                    </span>
+                  ) : isActiveBattler && (
                     <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                       1v1 Active
                     </span>
@@ -87,7 +107,7 @@ export const SquadBuddyTab: React.FC<SquadBuddyTabProps> = ({ state }) => {
                 src={selectedPokemon.spriteUrl}
                 alt={selectedPokemon.speciesName}
                 style={{ filter: selectedStyle?.filterStyle || 'none' }}
-                className="w-16 h-16 object-contain"
+                className="w-16 h-16 object-contain drop-shadow"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = selectedPokemon.artworkUrl;
                 }}
@@ -99,8 +119,22 @@ export const SquadBuddyTab: React.FC<SquadBuddyTabProps> = ({ state }) => {
                     {selectedPokemon.prismaticTier}
                   </span>
                 </div>
-                <div className="text-xs text-slate-400 mt-0.5">
-                  Dex #{selectedPokemon.dexNumber} • Type: <span className="text-emerald-400 font-bold">{selectedPokemon.types.join('/')}</span> • Nature: {selectedPokemon.nature}
+                <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                  <span>Dex #{selectedPokemon.dexNumber}</span>
+                  <span>•</span>
+                  <span>Nature: {selectedPokemon.nature}</span>
+                  <span>•</span>
+                  <div className="flex gap-1">
+                    {selectedPokemon.types.map(t => (
+                      <span
+                        key={t}
+                        className="px-1.5 py-0.2 rounded font-bold text-[9px] text-white"
+                        style={{ backgroundColor: TYPE_PALETTES[t]?.primary || '#666' }}
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -110,7 +144,7 @@ export const SquadBuddyTab: React.FC<SquadBuddyTabProps> = ({ state }) => {
                 onClick={() => state.setBuddy(selectedPokemon)}
                 className="px-3.5 py-2 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
               >
-                <Compass size={14} /> Set as Companion
+                <Compass size={14} /> Set Companion
               </button>
             </div>
           </div>
@@ -159,7 +193,7 @@ export const SquadBuddyTab: React.FC<SquadBuddyTabProps> = ({ state }) => {
               PC Storage Box ({state.pcBox.length} Pokémon Stored)
             </h4>
             <p className="text-xs text-slate-400">
-              Select a stored Pokémon and tap "Swap into Squad Slot #{selectedSquadSlot + 1}"
+              Select a stored Pokémon and swap with your active squad
             </p>
           </div>
 
@@ -179,7 +213,7 @@ export const SquadBuddyTab: React.FC<SquadBuddyTabProps> = ({ state }) => {
 
         {state.pcBox.length === 0 ? (
           <div className="text-center py-8 text-xs text-slate-500">
-            No Pokémon in your PC box yet. Use Capture Orbs in the Meadow to catch wild Pokémon!
+            No Pokémon in your PC box yet. Catch wild Pokémon in the tall grass using Capture Orbs!
           </div>
         ) : (
           <div className="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-8 gap-2.5 max-h-72 overflow-y-auto pr-1 custom-scrollbar">

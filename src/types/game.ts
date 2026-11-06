@@ -73,6 +73,8 @@ export interface PokemonData {
   artworkUrl: string;
   catchRate: number; // 3 (legendary) to 255 (common)
   rarityTier: 'Common' | 'Uncommon' | 'Rare' | 'Legendary';
+  isFainted?: boolean;
+  faintedUntilTimestamp?: number;
 }
 
 export interface Active1v1Combatant {

@@ -1,7 +1,8 @@
 import React from 'react';
 import { GameStateManager } from '../state/GameStateManager';
-import { REGIONS_DATA, getPrismaticSpriteStyle, calculateTypeMultiplier, ASSET_ICONS } from '../data/pokemonCatalog';
-import { Sparkles, AlertTriangle, Crosshair, Shield } from 'lucide-react';
+import { REGIONS_DATA, getPrismaticSpriteStyle, calculateTypeMultiplier, ASSET_ICONS, TYPE_PALETTES } from '../data/pokemonCatalog';
+import { getCityBackgroundUrl } from '../data/cityBackgrounds';
+import { Sparkles, AlertTriangle, Crosshair, Shield, HeartPulse, Clock } from 'lucide-react';
 
 interface MeadowBattlefieldProps {
   state: GameStateManager;
@@ -32,13 +33,18 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
   const wavesRequired = currentGym?.wavesRequiredToChallenge || 5;
   const canChallengeGym = currentGym && !currentGym.defeated && wavesBeatenInCity >= wavesRequired;
 
-  return (
-    <div className={`relative w-full h-full overflow-hidden select-none bg-gradient-to-b ${currentRegion.bgGradient}`}>
-      {/* Soft atmospheric gradient & meadow ground dots */}
-      <div className="absolute inset-0 opacity-15 pointer-events-none bg-[radial-gradient(#10b981_1.5px,transparent_1.5px)] [background-size:32px_32px]" />
-      <div className="absolute inset-0 pointer-events-none bg-radial from-transparent via-slate-950/20 to-slate-950/80" />
+  const bgImageUrl = getCityBackgroundUrl(currentGym?.id || 1, currentRegion.id);
 
-      {/* TOP MEADOW HEADER: REGION, CITY, LEVEL CAP & CURRENCIES */}
+  return (
+    <div className="relative w-full h-full overflow-hidden select-none bg-slate-950">
+      {/* AUTHENTIC POKÉMON CITY BACKGROUND */}
+      <div
+        className="absolute inset-0 bg-cover bg-center transition-all duration-700 opacity-40 scale-105"
+        style={{ backgroundImage: `url(${bgImageUrl})` }}
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-slate-950/90 pointer-events-none" />
+
+      {/* TOP MEADOW HEADER: TRAINER, REGION, CITY, LEVEL CAP & CURRENCIES */}
       <div className="absolute top-4 left-4 right-4 z-20 pointer-events-none flex flex-wrap items-start justify-between gap-2">
         <div className="flex items-center gap-3 bg-slate-950/90 backdrop-blur-xl px-4 py-2.5 rounded-2xl border border-slate-800 shadow-2xl pointer-events-auto">
           <img src={currentRegion.badgeIcon} alt="Badge" className="w-8 h-8 object-contain drop-shadow" />
@@ -52,14 +58,14 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
               </span>
             </div>
             <div className="text-[11px] text-slate-400 font-mono flex items-center gap-2">
-              <span>{currentRegion.name} ({currentRegion.generation})</span>
+              <span>{state.trainerName} • {currentRegion.name}</span>
               <span>•</span>
               <span className="text-amber-400 font-bold">Lvl Cap: Lv.{state.getHardLevelCap()}</span>
             </div>
           </div>
         </div>
 
-        {/* GYM CHALLENGE BUTTON IF WAVES READY */}
+        {/* GYM CHALLENGE BUTTON (ONLY AVAILABLE AFTER WAVE REQUIREMENT) */}
         {currentGym && !currentGym.defeated && (
           <div className="pointer-events-auto flex items-center gap-2">
             <button
@@ -71,15 +77,15 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
               disabled={!canChallengeGym}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-xl ${
                 canChallengeGym
-                  ? 'bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-white shadow-amber-950/50 animate-pulse'
+                  ? 'bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-white shadow-amber-950/50 animate-pulse cursor-pointer'
                   : 'bg-slate-950/90 text-slate-500 border border-slate-800 cursor-not-allowed opacity-75'
               }`}
             >
               <img src={currentGym.badgeIcon} alt="Gym" className="w-5 h-5 object-contain" />
               <span>
                 {canChallengeGym
-                  ? `Challenge ${currentGym.name}!`
-                  : `Gym: ${wavesBeatenInCity}/${wavesRequired} Waves`}
+                  ? `Challenge Leader ${currentGym.name}!`
+                  : `Gym: ${wavesBeatenInCity}/${wavesRequired} Waves Cleared`}
               </span>
             </button>
           </div>
@@ -99,10 +105,10 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
         </div>
       </div>
 
-      {/* 1v1 ACTIVE MEADOW ARENA (NATURAL SPRITE STAGING WITH SHADOWS, NO BOX OUTLINES) */}
+      {/* 1v1 MEADOW ARENA */}
       <div className="absolute inset-0 pt-20 pb-52 pointer-events-none flex items-center justify-between px-8 md:px-28">
         {/* 1. PLAYER'S ACTIVE 1v1 BATTLER (LEFT SIDE) */}
-        {player && (
+        {player ? (
           <div
             className="pointer-events-auto transition-transform duration-200 flex flex-col items-center"
             style={{
@@ -110,9 +116,9 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
             }}
           >
             {/* Overhead Battler Card */}
-            <div className="bg-slate-950/90 backdrop-blur-xl p-2.5 rounded-2xl border border-slate-800/80 shadow-2xl mb-2 min-w-[170px]">
+            <div className="bg-slate-950/90 backdrop-blur-xl p-2.5 rounded-2xl border border-slate-800 shadow-2xl mb-2 min-w-[180px]">
               <div className="flex items-center justify-between text-xs mb-1">
-                <span className="font-extrabold text-white truncate max-w-[105px]">{player.pokemon.speciesName}</span>
+                <span className="font-extrabold text-white truncate max-w-[110px]">{player.pokemon.speciesName}</span>
                 <span className="font-mono text-cyan-400 font-bold text-[11px]">Lv.{player.pokemon.level}</span>
               </div>
 
@@ -124,13 +130,31 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
                 />
               </div>
 
+              {/* EXP Bar */}
+              <div className="w-full bg-slate-950 rounded-full h-1 overflow-hidden border border-slate-800/80 mt-1">
+                <div
+                  className="h-full bg-indigo-500 transition-all duration-300 rounded-full"
+                  style={{ width: `${Math.min(100, (player.pokemon.currentExp / Math.max(1, player.pokemon.expToNextLevel)) * 100)}%` }}
+                />
+              </div>
+
               <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono mt-1">
                 <span>HP: {player.currentHp}/{player.maxHp}</span>
-                <span className="text-emerald-400 font-semibold">{player.pokemon.types.join('/')}</span>
+                <div className="flex gap-1">
+                  {player.pokemon.types.map(t => (
+                    <span
+                      key={t}
+                      className="px-1.5 py-0.2 rounded font-bold text-[9px] text-white"
+                      style={{ backgroundColor: TYPE_PALETTES[t]?.primary || '#666' }}
+                    >
+                      {t}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Natural Pokémon Sprite with Ground Shadow (No box outlines) */}
+            {/* Natural Pokémon Sprite with Ground Shadow */}
             <div className="flex flex-col items-center">
               <div className={`relative ${playerStyle?.auraClass || ''}`}>
                 <img
@@ -150,6 +174,13 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
               Active Partner
             </div>
           </div>
+        ) : (
+          /* All party members fainted recovery state */
+          <div className="bg-slate-950/90 backdrop-blur-xl p-4 rounded-3xl border border-rose-500/40 text-center space-y-2 pointer-events-auto">
+            <HeartPulse className="w-8 h-8 text-rose-500 mx-auto animate-pulse" />
+            <div className="text-sm font-black text-white">Party Pokémon Fainted!</div>
+            <p className="text-xs text-slate-400 font-mono">Resting... Pokémon will recover full health automatically.</p>
+          </div>
         )}
 
         {/* VS Label */}
@@ -157,8 +188,8 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
           <span className="text-xs font-black tracking-widest text-slate-500 uppercase">VS</span>
         </div>
 
-        {/* 2. WILD 1v1 OPPONENT (RIGHT SIDE) */}
-        {wild && (
+        {/* 2. WILD 1v1 OPPONENT (RIGHT SIDE) OR RESPAWN COOLDOWN */}
+        {wild ? (
           <div
             className="pointer-events-auto transition-transform duration-200 flex flex-col items-center group cursor-pointer"
             onClick={() => state.throwCaptureOrb()}
@@ -167,9 +198,9 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
             }}
           >
             {/* Overhead Wild Info Card */}
-            <div className="bg-slate-950/90 backdrop-blur-xl p-2.5 rounded-2xl border border-slate-800/80 shadow-2xl mb-2 min-w-[170px]">
+            <div className="bg-slate-950/90 backdrop-blur-xl p-2.5 rounded-2xl border border-slate-800 shadow-2xl mb-2 min-w-[180px]">
               <div className="flex items-center justify-between text-xs mb-1">
-                <span className={`font-extrabold truncate max-w-[105px] ${wild.pokemon.prismaticTier !== 'Standard' ? 'text-amber-400' : 'text-white'}`}>
+                <span className={`font-extrabold truncate max-w-[110px] ${wild.pokemon.prismaticTier !== 'Standard' ? 'text-amber-400' : 'text-white'}`}>
                   {wild.pokemon.speciesName}
                 </span>
                 <span className="font-mono text-amber-400 font-bold text-[11px]">Lv.{wild.pokemon.level}</span>
@@ -185,13 +216,21 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
 
               <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono mt-1">
                 <span>HP: {wild.currentHp}/{wild.maxHp}</span>
-                <span className={`px-1.5 py-0.2 rounded font-bold ${wildStyle?.badgeClass || 'text-slate-400'}`}>
-                  {wild.pokemon.prismaticTier}
-                </span>
+                <div className="flex gap-1">
+                  {wild.pokemon.types.map(t => (
+                    <span
+                      key={t}
+                      className="px-1.5 py-0.2 rounded font-bold text-[9px] text-white"
+                      style={{ backgroundColor: TYPE_PALETTES[t]?.primary || '#666' }}
+                    >
+                      {t}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Natural Wild Sprite with Ground Shadow (No box outlines) */}
+            {/* Natural Wild Sprite with Ground Shadow */}
             <div className="flex flex-col items-center">
               <div className={`relative ${wildStyle?.auraClass || ''}`}>
                 <img
@@ -213,12 +252,21 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
               <span>Catch Odds: {catchOdds}% ({wild.pokemon.rarityTier})</span>
             </div>
           </div>
+        ) : (
+          /* Wild Respawn Cooldown Timer */
+          <div className="bg-slate-950/90 backdrop-blur-xl p-4 rounded-3xl border border-slate-800 text-center space-y-1.5 min-w-[180px] pointer-events-auto">
+            <Clock className="w-6 h-6 text-amber-400 mx-auto animate-spin" style={{ animationDuration: '3s' }} />
+            <div className="text-xs font-bold text-white">Next Wild Pokémon Spawning...</div>
+            <div className="text-[11px] font-mono text-amber-400 font-bold">
+              {state.wildRespawnCooldownRemaining.toFixed(1)}s
+            </div>
+          </div>
         )}
       </div>
 
-      {/* TALLGRASS BOTTOM BATTLE COMMAND CENTER */}
+      {/* BOTTOM BATTLE COMMAND CENTER */}
       <div className="absolute bottom-28 left-4 right-4 z-30 pointer-events-auto max-w-4xl mx-auto bg-slate-950/95 backdrop-blur-2xl p-3.5 rounded-3xl border border-slate-800 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-3">
-        {/* 1. ATTACK MOVES */}
+        {/* ATTACK MOVES */}
         <div className="flex-1 w-full">
           <div className="flex items-center justify-between text-[10px] uppercase font-bold text-slate-400 mb-1.5">
             <span>Partner Attacks</span>
@@ -262,6 +310,7 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
                   <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono mt-1">
                     <span>{move.type} • Pwr {move.power}</span>
                     {typeMult > 1.0 && <span className="text-amber-400 font-bold">{typeMult}x</span>}
+                    {typeMult === 0 && <span className="text-slate-500 font-bold">0x</span>}
                   </div>
                 </button>
               );
@@ -269,7 +318,7 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
           </div>
         </div>
 
-        {/* 2. TALLGRASS CAPTURE ORBS THROW BAR */}
+        {/* CAPTURE ORBS THROW BAR */}
         <div className="w-full md:w-auto flex items-center justify-between md:justify-end gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 md:border-l border-slate-800 md:pl-3">
           <div className="flex items-center gap-1.5">
             {state.inventory

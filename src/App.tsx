@@ -7,6 +7,7 @@ import { WorldTab } from './components/drawers/WorldTab';
 import { ShopTab } from './components/drawers/ShopTab';
 import { SocialHubTab } from './components/drawers/SocialHubTab';
 import { GymBattleView } from './components/drawers/GymBattleView';
+import { StarterSelectionModal } from './components/StarterSelectionModal';
 
 export const App: React.FC = () => {
   const gameState = GameStateManager.getInstance();
@@ -24,11 +25,16 @@ export const App: React.FC = () => {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans flex flex-col">
-      {/* CENTRAL VIEWPORT (MEADOW OR DEDICATED APP SCREEN) */}
+      {/* 1. ONBOARDING / STARTER SELECTION GREETING MODAL */}
+      {!gameState.hasCompletedOnboarding && (
+        <StarterSelectionModal state={gameState} />
+      )}
+
+      {/* 2. CENTRAL VIEWPORT (MEADOW OR DEDICATED APP SCREEN) */}
       <main className="flex-1 relative overflow-hidden pb-28">
         {activeTab === 'meadow' && <MeadowBattlefield state={gameState} />}
 
-        {/* CLEAN, FULLY STRUCTURED APP SCREENS (NON-COLLAPSING, CLEAN TALLGRASS ARCHITECTURE) */}
+        {/* FULLY STRUCTURED APP SCREENS */}
         {activeTab !== 'meadow' && (
           <div className="h-full overflow-y-auto p-4 md:p-6 max-w-4xl mx-auto custom-scrollbar">
             {activeTab === 'team' && <SquadBuddyTab state={gameState} />}
@@ -44,7 +50,7 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* FIXED, NON-COLLAPSIBLE PROPERLY-SIZED BOTTOM NAVIGATION BAR */}
+      {/* 3. FIXED, NON-COLLAPSIBLE PROPERLY-SIZED BOTTOM NAVIGATION BAR */}
       <BottomDock
         state={gameState}
         activeTab={activeTab}

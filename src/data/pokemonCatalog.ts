@@ -1,5 +1,6 @@
 import { PokemonData, PokemonIVs, PokemonEVs, PokemonStats, PrismaticTier, RegionInfo, Move, ElementalType } from '../types/game';
 import allPokemonRaw from './allPokemonMeta.json';
+import pokemonTypesMapRaw from './pokemonTypesMap.json';
 import { ALL_72_GYM_LEADERS } from './gymLeadersData';
 import { REGION_LEGENDARIES, getSpeciesRarityAndCatchRate } from './rarityAndLegendaries';
 
@@ -10,6 +11,7 @@ export interface PokemonSpeciesEntry {
 }
 
 export const ALL_POKEMON_ENTRIES: PokemonSpeciesEntry[] = allPokemonRaw as PokemonSpeciesEntry[];
+export const POKEMON_ACCURATE_TYPES: Record<string, string[]> = pokemonTypesMapRaw as Record<string, string[]>;
 
 // SVG Icons & Sprite URLs for items, balls, and badges (Pure asset sprites, zero emojis)
 export const ASSET_ICONS = {
@@ -134,16 +136,14 @@ export const TYPE_PALETTES: Record<ElementalType, { primary: string; secondary: 
 };
 
 export function getTypesForDex(dex: number): [ElementalType] | [ElementalType, ElementalType] {
-  const typeCycle: ElementalType[] = [
-    'Grass', 'Fire', 'Water', 'Bug', 'Normal', 'Flying', 'Poison', 'Electric', 
-    'Ground', 'Fairy', 'Fighting', 'Psychic', 'Rock', 'Steel', 'Ice', 'Ghost', 'Dragon', 'Dark'
-  ];
-  const primary = typeCycle[(dex * 7) % typeCycle.length];
-  if (dex % 3 === 0) {
-    const secondary = typeCycle[(dex * 13) % typeCycle.length];
-    if (secondary !== primary) return [primary, secondary];
+  const accurate = POKEMON_ACCURATE_TYPES[dex.toString()];
+  if (accurate && accurate.length > 0) {
+    if (accurate.length >= 2) {
+      return [accurate[0] as ElementalType, accurate[1] as ElementalType];
+    }
+    return [accurate[0] as ElementalType];
   }
-  return [primary];
+  return ['Normal'];
 }
 
 export function calculatePokemonStats(

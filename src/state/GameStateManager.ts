@@ -20,6 +20,7 @@ import {
   ASSET_ICONS,
 } from '../data/pokemonCatalog';
 import { TALLGRASS_SHOP_CATALOG } from '../data/tallgrassItems';
+import { getCityEncounters } from '../data/cityWildEncounters';
 
 export interface CombatLogEntry {
   id: string;
@@ -31,9 +32,13 @@ export interface CombatLogEntry {
 export class GameStateManager {
   private static instance: GameStateManager;
 
+  // Player Profile & Onboarding
+  public trainerName: string = 'Trainer';
+  public hasCompletedOnboarding: boolean = false;
+
   // Real Economy Wallet
-  public pokeDollars: number = 3200;
-  public prismaticShards: number = 220;
+  public pokeDollars: number = 1000;
+  public prismaticShards: number = 50;
 
   // Regions, Cities & Gym Badges
   public currentRegionIndex: number = 0;
@@ -52,7 +57,7 @@ export class GameStateManager {
     timestamp: number;
   }[] = [];
 
-  // Squad (5 Slots) & Active Battler Index (Tallgrass 1v1 Format)
+  // Squad (5 Slots) & Active Battler Index (Starts with ONLY 1 starter)
   public squad: PokemonData[] = [];
   public activeBattlerSlot: number = 0;
   public pcBox: PokemonData[] = [];
@@ -80,10 +85,10 @@ export class GameStateManager {
     preferredBall: 'poke',
   };
 
-  // Tallgrass Inventory (Capture Orbs, Potions, Candies)
+  // Tallgrass Inventory
   public inventory: InventoryItem[] = [...TALLGRASS_SHOP_CATALOG];
 
-  // Global Player Marketplace (Zero bots)
+  // Global Player Marketplace
   public marketListings: MarketListing[] = [];
 
   // Playable Overworld Raid Boss
@@ -110,7 +115,10 @@ export class GameStateManager {
   public wildCombatant: Active1v1Combatant | null = null;
   public combatLogs: CombatLogEntry[] = [];
 
-  // Active Main-Series Gym Battle Session (Modal Arena)
+  // Cooldown timers
+  public wildRespawnCooldownRemaining: number = 0; // seconds before next wild spawns
+
+  // Active Main-Series Gym Battle Session
   public activeGymBattle: GymBattleSession | null = null;
 
   // Selected Throwing Ball for manual capture
@@ -129,8 +137,77 @@ export class GameStateManager {
   }
 
   private constructor() {
-    this.initStarterSquad();
+    this.checkSavedSession();
     this.startCombatLoop();
+  }
+
+  private checkSavedSession() {
+    try {
+      const saved = localStorage.getItem('spectra_save_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.hasCompletedOnboarding && parsed.squad?.length > 0) {
+          this.trainerName = parsed.trainerName || 'Trainer';
+          this.hasCompletedOnboarding = true;
+          this.squad = parsed.squad;
+          this.pcBox = parsed.pcBox || [];
+          this.pokeDollars = parsed.pokeDollars || 1000;
+          this.prismaticShards = parsed.prismaticShards || 50;
+          this.currentRegionIndex = parsed.currentRegionIndex || 0;
+          this.currentCityIndex = parsed.currentCityIndex || 0;
+          this.cityWavesBeaten = parsed.cityWavesBeaten || {};
+          this.pokedexCaught = new Set(parsed.pokedexCaught || [this.squad[0].dexNumber]);
+          this.init1v1Combatants();
+          return;
+        }
+      }
+    } catch {
+      // Fallback
+    }
+
+    // Default: Needs onboarding
+    this.hasCompletedOnboarding = false;
+  }
+
+  public completeOnboarding(chosenName: string, starterDex: number) {
+    this.trainerName = chosenName;
+    this.hasCompletedOnboarding = true;
+
+    // Start with ONLY 1 Starter Pokemon at Lv. 5
+    const starter = createPokemonInstanceByDex(starterDex, 5);
+    this.squad = [starter];
+    this.activeBattlerSlot = 0;
+    this.pcBox = [];
+    this.pokedexCaught.add(starter.dexNumber);
+
+    this.currentRegionIndex = 0;
+    this.currentCityIndex = 0;
+    this.cityWavesBeaten = {};
+
+    this.addLog(`Welcome to the Pokémon world, ${this.trainerName}! You received ${starter.speciesName}!`, 'prismatic');
+    this.init1v1Combatants();
+    this.saveGame();
+    this.notify();
+  }
+
+  public saveGame() {
+    try {
+      const payload = {
+        trainerName: this.trainerName,
+        hasCompletedOnboarding: this.hasCompletedOnboarding,
+        squad: this.squad,
+        pcBox: this.pcBox,
+        pokeDollars: this.pokeDollars,
+        prismaticShards: this.prismaticShards,
+        currentRegionIndex: this.currentRegionIndex,
+        currentCityIndex: this.currentCityIndex,
+        cityWavesBeaten: this.cityWavesBeaten,
+        pokedexCaught: Array.from(this.pokedexCaught),
+      };
+      localStorage.setItem('spectra_save_v1', JSON.stringify(payload));
+    } catch {
+      // ignore storage failure
+    }
   }
 
   public subscribe(cb: () => void): () => void {
@@ -144,33 +221,10 @@ export class GameStateManager {
     this.subscribers.forEach(cb => cb());
   }
 
-  private initStarterSquad() {
-    const charizard = createPokemonInstanceByDex(6, 12);
-    const pikachu = createPokemonInstanceByDex(25, 10);
-    const blastoise = createPokemonInstanceByDex(9, 11);
-    const venusaur = createPokemonInstanceByDex(3, 10);
-    const lucario = createPokemonInstanceByDex(448, 12, 'Radiant');
-
-    this.squad = [charizard, pikachu, blastoise, venusaur, lucario];
-    this.squad.forEach(p => this.pokedexCaught.add(p.dexNumber));
-
-    this.buddy = createPokemonInstanceByDex(778, 10, 'Shiny');
-    this.buddyData.pokemonId = this.buddy.id;
-    this.pokedexCaught.add(this.buddy.dexNumber);
-
-    this.pcBox.push(createPokemonInstanceByDex(133, 8)); // Eevee
-    this.pcBox.push(createPokemonInstanceByDex(94, 12, 'Ethereal')); // Gengar
-    this.pcBox.push(createPokemonInstanceByDex(143, 12)); // Snorlax
-    this.pcBox.push(createPokemonInstanceByDex(10, 5)); // Caterpie
-
-    this.init1v1Combatants();
-  }
-
   public getCurrentGymLeader(): GymLeader | null {
     const currentRegion = REGIONS_DATA[this.currentRegionIndex];
     if (!currentRegion) return null;
-    const gym = currentRegion.gyms[this.currentCityIndex] || currentRegion.gyms.find(g => !g.defeated) || currentRegion.gyms[0];
-    return gym;
+    return currentRegion.gyms[this.currentCityIndex] || currentRegion.gyms[0];
   }
 
   // Hard Level Cap = next undefeated gym leader's ace pokemon level
@@ -191,13 +245,15 @@ export class GameStateManager {
 
   public switchActiveBattler(slotIdx: number) {
     if (slotIdx < 0 || slotIdx >= this.squad.length) return;
+    const target = this.squad[slotIdx];
+    if (target.isFainted) return;
+
     this.activeBattlerSlot = slotIdx;
-    const active = this.squad[slotIdx];
     this.playerCombatant = {
-      pokemon: active,
+      pokemon: target,
       isPlayer: true,
-      currentHp: active.stats.hp,
-      maxHp: active.stats.maxHp,
+      currentHp: target.stats.hp,
+      maxHp: target.stats.maxHp,
       x: 22,
       y: 60,
       targetX: 22,
@@ -209,11 +265,12 @@ export class GameStateManager {
       attackCooldowns: {},
       lastAttackTimestamp: performance.now(),
     };
-    this.addLog(`Switched active partner: Go, ${active.speciesName}!`, 'level');
+    this.addLog(`Go, ${target.speciesName}!`, 'level');
     this.notify();
   }
 
   private init1v1Combatants() {
+    if (this.squad.length === 0) return;
     const active = this.squad[this.activeBattlerSlot] || this.squad[0];
     this.playerCombatant = {
       pokemon: active,
@@ -235,38 +292,38 @@ export class GameStateManager {
     this.spawnWildEncounter();
   }
 
-  // Realistic Spawning: Species per region, gates region legendaries until all 8 region gyms are defeated
+  // Realistic city-bound spawning: No Venusaur in Pewter City!
   public spawnWildEncounter(forceSupernova: boolean = false) {
     const currentRegion = REGIONS_DATA[this.currentRegionIndex];
-    const [minLvl, maxLvl] = currentRegion.levelRange;
     const currentGym = this.getCurrentGymLeader();
-    const cityTargetLvl = currentGym ? Math.max(minLvl, currentGym.levelRequirement - 3) : minLvl;
+    const gymId = currentGym?.id || 1;
 
-    const wildLevel = Math.min(
-      maxLvl,
-      Math.max(minLvl, Math.floor(cityTargetLvl - 2 + Math.random() * 4))
+    // Fetch realistic encounters for this city
+    const possibleEncounters = getCityEncounters(
+      gymId,
+      currentRegion.dexRange[0],
+      currentRegion.dexRange[1],
+      currentGym ? currentGym.levelRequirement - 4 : 5
     );
 
-    const allGymsDefeated = currentRegion.gyms.every(g => g.defeated);
-    const [dexMin, dexMax] = currentRegion.dexRange;
+    // Roll based on weight
+    const totalWeight = possibleEncounters.reduce((sum, e) => sum + e.weight, 0);
+    let roll = Math.random() * totalWeight;
+    let chosenEncounter = possibleEncounters[0];
 
-    let chosenDex: number;
-    // If all gyms defeated in region, 5% chance of region legendary encounter
-    if (allGymsDefeated && currentRegion.legendaryDex && currentRegion.legendaryDex.length > 0 && Math.random() < 0.05) {
-      const legList = currentRegion.legendaryDex;
-      chosenDex = legList[Math.floor(Math.random() * legList.length)];
-    } else {
-      // Pick non-legendary wild species in range
-      let candidate = dexMin + Math.floor(Math.random() * (dexMax - dexMin + 1));
-      if (currentRegion.legendaryDex && currentRegion.legendaryDex.includes(candidate)) {
-        candidate = dexMin + 1; // fall back to basic starter/common
+    for (const enc of possibleEncounters) {
+      if (roll < enc.weight) {
+        chosenEncounter = enc;
+        break;
       }
-      chosenDex = candidate;
+      roll -= enc.weight;
     }
 
+    const wildLevel = chosenEncounter.minLvl + Math.floor(Math.random() * (chosenEncounter.maxLvl - chosenEncounter.minLvl + 1));
     const tier: PrismaticTier = forceSupernova ? 'Supernova' : undefined as any;
+
     const wildPokemon = createPokemonInstanceByDex(
-      chosenDex,
+      chosenEncounter.dex,
       wildLevel,
       tier,
       this.buddyData.passiveTree.prismaticResonanceTier
@@ -291,17 +348,14 @@ export class GameStateManager {
 
     if (wildPokemon.prismaticTier !== 'Standard') {
       this.addLog(
-        `A rare ${wildPokemon.prismaticTier} ${wildPokemon.speciesName} (Lv. ${wildPokemon.level}) appeared in the Meadow!`,
+        `A rare ${wildPokemon.prismaticTier} ${wildPokemon.speciesName} (Lv. ${wildPokemon.level}) appeared!`,
         'prismatic'
       );
     }
   }
 
-  // Realistic Slowed Combat Engine (~2.5s-3.5s Deliberate Pacing)
   private startCombatLoop() {
     if (this.combatTimer) clearInterval(this.combatTimer);
-
-    // Run tick every 100ms
     this.combatTimer = window.setInterval(() => {
       this.onCombatTick();
     }, 100);
@@ -312,7 +366,30 @@ export class GameStateManager {
     const delta = (now - this.lastTickTimestamp) / 1000;
     this.lastTickTimestamp = now;
 
-    // Reset combat motion decay
+    // Check fainted party members cooldown respawn (12 seconds realistic recovery)
+    let stateChanged = false;
+    this.squad.forEach((pkmn, idx) => {
+      if (pkmn.isFainted && pkmn.faintedUntilTimestamp && now >= pkmn.faintedUntilTimestamp) {
+        pkmn.isFainted = false;
+        pkmn.faintedUntilTimestamp = undefined;
+        pkmn.stats.hp = pkmn.stats.maxHp;
+        this.addLog(`${pkmn.speciesName} recovered full health!`, 'level');
+        stateChanged = true;
+        if (!this.playerCombatant || this.playerCombatant.currentHp <= 0) {
+          this.switchActiveBattler(idx);
+        }
+      }
+    });
+
+    // Check wild respawn cooldown
+    if (this.wildRespawnCooldownRemaining > 0) {
+      this.wildRespawnCooldownRemaining = Math.max(0, this.wildRespawnCooldownRemaining - delta);
+      if (this.wildRespawnCooldownRemaining === 0) {
+        this.spawnWildEncounter();
+        stateChanged = true;
+      }
+    }
+
     if (this.playerCombatant) {
       this.playerCombatant.lungeX *= 0.85;
       this.playerCombatant.shakeX *= 0.82;
@@ -327,30 +404,33 @@ export class GameStateManager {
       if (Math.abs(this.wildCombatant.shakeX) < 0.2) this.wildCombatant.shakeX = 0;
     }
 
-    // Pause overworld loop when gym battle modal is active
-    if (this.activeGymBattle) {
+    if (this.activeGymBattle || !this.isBattling || !this.playerCombatant || !this.wildCombatant) {
+      if (stateChanged) this.notify();
       return;
     }
 
-    if (!this.isBattling || !this.playerCombatant || !this.wildCombatant) {
-      return;
-    }
-
-    // 1. Revive player if fainted
+    // 1. Check if active battler fainted
     if (this.playerCombatant.currentHp <= 0) {
-      const nextLivingIdx = this.squad.findIndex(p => p.stats.hp > 0 && p.id !== this.playerCombatant?.pokemon.id);
+      const activePkmn = this.playerCombatant.pokemon;
+      activePkmn.isFainted = true;
+      activePkmn.faintedUntilTimestamp = now + 12000; // 12 seconds recovery cooldown
+      this.addLog(`${activePkmn.speciesName} fainted! Needs 12s to recover.`, 'faint');
+
+      // Switch to next conscious squad member if available
+      const nextLivingIdx = this.squad.findIndex(p => !p.isFainted && p.stats.hp > 0);
       if (nextLivingIdx !== -1) {
         this.switchActiveBattler(nextLivingIdx);
       } else {
-        this.squad.forEach(p => p.stats.hp = p.stats.maxHp);
-        this.switchActiveBattler(0);
-        this.addLog('Nurse Joy restored your squad to full health!', 'level');
+        this.playerCombatant = null;
+        this.addLog('All squad Pokémon have fainted! Waiting for recovery...', 'faint');
       }
+      this.notify();
+      return;
     }
 
-    // 2. Slowed Turn Execution: Partner attacks roughly every 2.8s
-    const isWildLowHp = this.wildCombatant.currentHp < this.wildCombatant.maxHp * 0.25;
+    // 2. Slowed Partner Turn Execution (~2.8s cadence)
     const moves = this.playerCombatant.pokemon.moves;
+    const isWildLowHp = this.wildCombatant.currentHp < this.wildCombatant.maxHp * 0.25;
 
     let chosenMove = moves.find(m => (this.playerCombatant!.attackCooldowns[m.id] || 0) <= 0);
     if (isWildLowHp) {
@@ -365,7 +445,6 @@ export class GameStateManager {
       if (cd > 0) this.playerCombatant!.attackCooldowns[m.id] = Math.max(0, cd - delta);
     });
 
-    // Deliberate 2.8s cadence
     if (chosenMove && (now - this.playerCombatant.lastAttackTimestamp) > 2800) {
       this.playerCombatant.lastAttackTimestamp = now;
       this.playerCombatant.attackCooldowns[chosenMove.id] = 2.8;
@@ -399,7 +478,7 @@ export class GameStateManager {
       }
     }
 
-    // 5. Wild faint resolution
+    // 5. Wild faint resolution: 1.8s cooldown before next wild spawn
     if (this.wildCombatant.currentHp <= 0) {
       this.waveNumber++;
       const currentGym = this.getCurrentGymLeader();
@@ -415,13 +494,16 @@ export class GameStateManager {
         this.prismaticShards += shardsAward;
       }
 
-      this.spawnWildEncounter();
+      // 1.8s respawn cooldown
+      this.wildCombatant = null;
+      this.wildRespawnCooldownRemaining = 1.8;
+      this.saveGame();
     }
 
     this.notify();
   }
 
-  // Move Execution with clean motion (idle bob, forward lunge, hit shake)
+  // Authentic move execution with genuine type multiplier (0x, 0.5x, 1x, 2x, 4x)
   public executeTallgrassMove(attacker: Active1v1Combatant, target: Active1v1Combatant, move: Move) {
     const lvl = attacker.pokemon.level;
     const atk = attacker.pokemon.stats.atk;
@@ -432,41 +514,41 @@ export class GameStateManager {
     const variance = 0.88 + Math.random() * 0.24;
     let damage = Math.max(1, Math.floor(rawDmg * variance));
 
-    // Tallgrass Gentle Tap Mechanic
+    // Gentle tap guarantees leaving at least 1 HP
     if (move.isGentleTap && damage >= target.currentHp) {
       damage = Math.max(1, target.currentHp - 1);
     }
 
     target.currentHp = Math.max(0, target.currentHp - damage);
 
-    // Natural Pokémon combat motion (forward lunge, hit shake)
     attacker.lungeX = attacker.isPlayer ? 16 : -16;
     target.shakeX = attacker.isPlayer ? 10 : -10;
 
     let effectivenessText = '';
     if (typeMult >= 2.0) effectivenessText = ' (Super effective!)';
     else if (typeMult <= 0.5 && typeMult > 0) effectivenessText = ' (Not very effective)';
-    else if (typeMult === 0) effectivenessText = ' (No effect!)';
+    else if (typeMult === 0) effectivenessText = ' (It had no effect!)';
 
     if (move.isGentleTap) {
-      this.addLog(`${attacker.pokemon.speciesName} used Gentle Tap! Target preserved at ${target.currentHp} HP.`, 'level');
+      this.addLog(`${attacker.pokemon.speciesName} used Gentle Tap! Preserved target at ${target.currentHp} HP.`, 'level');
     } else {
       this.addLog(`${attacker.pokemon.speciesName} used ${move.name}${effectivenessText}! (-${damage} HP)`, 'damage');
     }
 
     if (target.currentHp <= 0 && attacker.isPlayer) {
-      this.gainExp(attacker.pokemon, target.pokemon.level * 45);
-      this.addLog(`${attacker.pokemon.speciesName} defeated wild ${target.pokemon.speciesName}!`, 'faint');
+      // Realistic XP yield based on defeated species base yield and level
+      const xpYield = Math.floor((target.pokemon.level * 60) / 7);
+      this.gainExp(attacker.pokemon, xpYield);
+      this.addLog(`${attacker.pokemon.speciesName} defeated wild ${target.pokemon.speciesName}! (+${xpYield} EXP)`, 'faint');
     }
 
     this.notify();
   }
 
-  // Capture calculation using species catchRate and orb multiplier
   public calculateCatchOdds(enemy: Active1v1Combatant, ballMultiplier: number = 1.0): number {
     if (ballMultiplier >= 255.0) return 100;
-    const speciesRate = enemy.pokemon.catchRate || 100; // 3 to 255
-    const hpFactor = 1 - (enemy.currentHp / Math.max(1, enemy.maxHp)); // 0 when full, ~0.99 when 1 HP
+    const speciesRate = enemy.pokemon.catchRate || 100;
+    const hpFactor = 1 - (enemy.currentHp / Math.max(1, enemy.maxHp));
     const baseFraction = (speciesRate / 255.0) * (0.3 + (hpFactor * 0.7));
     const finalRate = Math.min(0.99, baseFraction * ballMultiplier);
     return Math.max(1, Math.floor(finalRate * 100));
@@ -491,29 +573,36 @@ export class GameStateManager {
 
     if (Math.random() * 100 < oddsPercent) {
       this.pokedexCaught.add(enemy.pokemon.dexNumber);
-      this.pcBox.push(enemy.pokemon);
+      
+      // If squad has room (< 5), add directly to squad; else to PC box
+      if (this.squad.length < 5) {
+        this.squad.push(enemy.pokemon);
+      } else {
+        this.pcBox.push(enemy.pokemon);
+      }
 
-      if (enemy.pokemon.prismaticTier !== 'Standard') {
-        this.prismaticLog.push({
-          tier: enemy.pokemon.prismaticTier,
-          species: enemy.pokemon.speciesName,
-          level: enemy.pokemon.level,
-          timestamp: Date.now(),
-        });
+      // Yield catch XP to active battler
+      if (this.playerCombatant) {
+        const catchXp = Math.floor((enemy.pokemon.level * 45) / 7);
+        this.gainExp(this.playerCombatant.pokemon, catchXp);
       }
 
       this.addLog(
-        `Captured ${enemy.pokemon.prismaticTier !== 'Standard' ? enemy.pokemon.prismaticTier + ' ' : ''}${enemy.pokemon.speciesName} (Lv. ${enemy.pokemon.level}) with ${ballItem.name}!`,
+        `Gotcha! ${enemy.pokemon.speciesName} (Lv. ${enemy.pokemon.level}) was caught!`,
         'catch'
       );
-      this.spawnWildEncounter();
+
+      // Trigger 1.8s cooldown
+      this.wildCombatant = null;
+      this.wildRespawnCooldownRemaining = 1.8;
+      this.saveGame();
     } else {
-      this.addLog(`The wild ${enemy.pokemon.speciesName} broke free from the ${ballItem.name}!`, 'level');
+      this.addLog(`The wild ${enemy.pokemon.speciesName} broke free!`, 'level');
     }
     this.notify();
   }
 
-  // Hard Level Cap Enforced
+  // Realistic Pokémon Leveling Curve with Hard Level Cap
   public gainExp(pokemon: PokemonData, expAmount: number) {
     const cap = this.getHardLevelCap();
     if (pokemon.level >= cap) {
@@ -522,10 +611,11 @@ export class GameStateManager {
     }
 
     pokemon.currentExp += expAmount;
-    if (pokemon.currentExp >= pokemon.expToNextLevel) {
+    while (pokemon.currentExp >= pokemon.expToNextLevel && pokemon.level < cap) {
+      pokemon.currentExp -= pokemon.expToNextLevel;
       pokemon.level++;
-      pokemon.currentExp = 0;
-      pokemon.expToNextLevel = pokemon.level * 100;
+      // Realistic Medium-Fast Exp Curve (level^3 / 1.2)
+      pokemon.expToNextLevel = Math.floor((pokemon.level ** 2) * 20);
       pokemon.stats = calculatePokemonStats(pokemon.baseStats, pokemon.ivs, pokemon.evs, pokemon.level);
 
       if (this.playerCombatant && this.playerCombatant.pokemon.id === pokemon.id) {
@@ -535,15 +625,28 @@ export class GameStateManager {
 
       this.addLog(`${pokemon.speciesName} grew to Lv. ${pokemon.level}!`, 'level');
     }
+
+    if (pokemon.level >= cap) {
+      pokemon.currentExp = 0;
+    }
     this.notify();
   }
 
-  // START AUTHENTIC GYM BATTLE SESSION
+  // Gym Leaders only challengeable after wave requirement is met
+  public canChallengeGymLeader(gym: GymLeader): boolean {
+    const wavesBeaten = this.cityWavesBeaten[gym.id] || 0;
+    return wavesBeaten >= gym.wavesRequiredToChallenge;
+  }
+
   public startGymBattle(gym: GymLeader) {
+    if (!this.canChallengeGymLeader(gym)) {
+      this.addLog(`You must clear ${gym.wavesRequiredToChallenge} waves in ${gym.cityName} before challenging Leader ${gym.name}!`, 'level');
+      return;
+    }
+
     const playerFirst = this.squad[this.activeBattlerSlot] || this.squad[0];
     const leaderFirst = gym.party[0];
 
-    // Compute leader initial HP
     const leaderMaxHp = Math.floor((((2 * 65 + 15) / 100) * leaderFirst.level) + 10 + leaderFirst.level + 15);
 
     this.activeGymBattle = {
@@ -556,7 +659,7 @@ export class GameStateManager {
       playerCurrentHp: playerFirst.stats.hp,
       playerMaxHp: playerFirst.stats.maxHp,
       turnPhase: 'player_choose',
-      battleDialog: `Leader ${gym.name}: "I am the Gym Leader of ${gym.cityName}! Show me the bond between you and your Pokémon!" Leader ${gym.name} sent out ${leaderFirst.name}!`,
+      battleDialog: `Leader ${gym.name}: "I am ${gym.name}, the Gym Leader of ${gym.cityName}! Show me the bond with your Pokémon!" Leader ${gym.name} sent out ${leaderFirst.name}!`,
       isCompleted: false,
     };
 
@@ -571,7 +674,6 @@ export class GameStateManager {
     const playerPkmn = this.squad[session.trainerCurrentPokemonIdx];
     const leaderPkmn = session.gymLeader.party[session.leaderCurrentPokemonIdx];
 
-    // 1. Player Attack
     const typeMult = calculateTypeMultiplier(playerMove.type, leaderPkmn.types);
     const rawDmg = Math.floor(((((2 * playerPkmn.level / 5 + 2) * playerMove.power * (playerPkmn.stats.atk / 65)) / 50) + 2) * typeMult);
     const damage = Math.max(1, Math.floor(rawDmg * (0.9 + Math.random() * 0.2)));
@@ -579,13 +681,12 @@ export class GameStateManager {
     session.leaderCurrentHp = Math.max(0, session.leaderCurrentHp - damage);
 
     let eff = '';
-    if (typeMult >= 2.0) eff = " It's super effective!";
-    else if (typeMult <= 0.5 && typeMult > 0) eff = " It's not very effective...";
+    if (typeMult >= 2.0) eff = " Super effective!";
+    else if (typeMult <= 0.5 && typeMult > 0) eff = " Not very effective...";
 
     session.battleDialog = `${playerPkmn.speciesName} used ${playerMove.name}!${eff} Dealt ${damage} damage to ${leaderPkmn.name}!`;
     this.notify();
 
-    // Check if Leader Pokemon fainted
     setTimeout(() => {
       if (session.leaderCurrentHp <= 0) {
         if (session.leaderCurrentPokemonIdx + 1 < session.gymLeader.party.length) {
@@ -598,7 +699,6 @@ export class GameStateManager {
           this.notify();
           return;
         } else {
-          // Gym Victory!
           session.turnPhase = 'victory';
           session.battleDialog = `You defeated Gym Leader ${session.gymLeader.name}! "Remarkable strength! You have earned the ${session.gymLeader.badgeName}!"`;
           this.notify();
@@ -606,9 +706,8 @@ export class GameStateManager {
         }
       }
 
-      // 2. Leader Counter Attack
       session.turnPhase = 'leader_attack';
-      const enemyDmg = Math.floor(((((2 * leaderPkmn.level / 5 + 2) * 60 * (65 / Math.max(1, playerPkmn.stats.def))) / 50) + 2) * (0.85 + Math.random() * 0.3));
+      const enemyDmg = Math.floor(((((2 * leaderPkmn.level / 5 + 2) * 55 * (60 / Math.max(1, playerPkmn.stats.def))) / 50) + 2) * (0.85 + Math.random() * 0.3));
       session.playerCurrentHp = Math.max(0, session.playerCurrentHp - enemyDmg);
       playerPkmn.stats.hp = session.playerCurrentHp;
 
@@ -617,8 +716,7 @@ export class GameStateManager {
 
       setTimeout(() => {
         if (session.playerCurrentHp <= 0) {
-          // Check next squad member
-          const nextIdx = this.squad.findIndex((p, idx) => idx > session.trainerCurrentPokemonIdx && p.stats.hp > 0);
+          const nextIdx = this.squad.findIndex((p, idx) => idx > session.trainerCurrentPokemonIdx && !p.isFainted && p.stats.hp > 0);
           if (nextIdx !== -1) {
             session.trainerCurrentPokemonIdx = nextIdx;
             const nextP = this.squad[nextIdx];
@@ -646,17 +744,16 @@ export class GameStateManager {
     this.pokeDollars += session.gymLeader.rewardDollars;
     this.prismaticShards += session.gymLeader.rewardShards;
 
-    // Squad Exp bonus & Full heal
     this.squad.forEach(p => {
+      p.isFainted = false;
       p.stats.hp = p.stats.maxHp;
       this.gainExp(p, session.gymLeader.levelRequirement * 80);
     });
 
-    // Unlock next gym or next region
     const currentRegion = REGIONS_DATA[this.currentRegionIndex];
-    const nextGym = currentRegion.gyms.find(g => !g.defeated);
-    if (nextGym) {
-      nextGym.unlocked = true;
+    const nextGymIdx = currentRegion.gyms.findIndex(g => !g.defeated);
+    if (nextGymIdx !== -1) {
+      currentRegion.gyms[nextGymIdx].unlocked = true;
     } else {
       if (this.currentRegionIndex < REGIONS_DATA.length - 1) {
         this.maxUnlockedRegionIndex = Math.max(this.maxUnlockedRegionIndex, this.currentRegionIndex + 1);
@@ -666,6 +763,7 @@ export class GameStateManager {
 
     this.addLog(`Earned the ${session.gymLeader.badgeName}! Level Cap increased!`, 'prismatic');
     this.activeGymBattle = null;
+    this.saveGame();
     this.notify();
   }
 
@@ -675,19 +773,31 @@ export class GameStateManager {
     this.notify();
   }
 
-  // Teleport to city / switch region
-  public travelToCity(regionIdx: number, cityIdx: number) {
-    if (regionIdx < 0 || regionIdx >= REGIONS_DATA.length) return;
+  // City Travel: ONLY allow travel if target city is unlocked (previous gym defeated)
+  public travelToCity(regionIdx: number, cityIdx: number): boolean {
+    if (regionIdx < 0 || regionIdx >= REGIONS_DATA.length) return false;
+    const region = REGIONS_DATA[regionIdx];
+    const targetGym = region.gyms[cityIdx];
+
+    // Check if player has unlocked this city
+    // City 0 is always unlocked if region is unlocked; city N requires gym N-1 to be defeated
+    const isUnlocked = cityIdx === 0 ? regionIdx <= this.maxUnlockedRegionIndex : region.gyms[cityIdx - 1]?.defeated;
+
+    if (!isUnlocked) {
+      this.addLog(`Cannot travel to ${targetGym.cityName}! You must defeat the previous Gym Leader first!`, 'level');
+      return false;
+    }
+
     this.currentRegionIndex = regionIdx;
     this.currentCityIndex = cityIdx;
     this.waveNumber = 1;
     this.spawnWildEncounter();
-    const city = REGIONS_DATA[regionIdx].gyms[cityIdx];
-    this.addLog(`Traveled to ${city.cityName} in ${REGIONS_DATA[regionIdx].name}!`, 'level');
+    this.addLog(`Traveled to ${targetGym.cityName}!`, 'level');
+    this.saveGame();
     this.notify();
+    return true;
   }
 
-  // Swap squad member with PC Box
   public swapSquadWithPC(squadIdx: number, pcIdx: number) {
     if (squadIdx < 0 || squadIdx >= this.squad.length) return;
     if (pcIdx < 0 || pcIdx >= this.pcBox.length) return;
@@ -699,12 +809,14 @@ export class GameStateManager {
     if (this.activeBattlerSlot === squadIdx) {
       this.switchActiveBattler(squadIdx);
     }
+    this.saveGame();
     this.notify();
   }
 
   public setBuddy(pokemon: PokemonData) {
     this.buddy = pokemon;
     this.buddyData.pokemonId = pokemon.id;
+    this.saveGame();
     this.notify();
   }
 
@@ -730,6 +842,7 @@ export class GameStateManager {
       this.activeRaid.currentHp = this.activeRaid.maxHp;
     }
 
+    this.saveGame();
     this.notify();
   }
 
