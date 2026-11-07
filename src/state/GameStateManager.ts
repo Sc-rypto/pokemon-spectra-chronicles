@@ -10,6 +10,7 @@ import {
   RaidBossState,
   GymBattleSession,
   GymLeader,
+  RogueRewardOption,
 } from '../types/game';
 import {
   REGIONS_DATA,
@@ -21,6 +22,7 @@ import {
 } from '../data/pokemonCatalog';
 import { TALLGRASS_SHOP_CATALOG } from '../data/tallgrassItems';
 import { getCityEncounters } from '../data/cityWildEncounters';
+import { generateRogueRewardBatch } from '../data/rogueRewardsData';
 
 export interface CombatLogEntry {
   id: string;
@@ -120,6 +122,9 @@ export class GameStateManager {
 
   // Active Main-Series Gym Battle Session
   public activeGymBattle: GymBattleSession | null = null;
+
+  // PokéRogue Reward Modal State
+  public currentRogueRewardOptions: RogueRewardOption[] | null = null;
 
   // Selected Throwing Ball for manual capture
   public selectedThrowingBall: string = 'b1';
@@ -292,11 +297,14 @@ export class GameStateManager {
     this.spawnWildEncounter();
   }
 
-  // Realistic city-bound spawning: No Venusaur in Pewter City!
+  // Realistic city-bound spawning: Every 10th wave is a Boss/Alpha battle
   public spawnWildEncounter(forceSupernova: boolean = false) {
     const currentRegion = REGIONS_DATA[this.currentRegionIndex];
     const currentGym = this.getCurrentGymLeader();
     const gymId = currentGym?.id || 1;
+
+    // Check if wave is a Boss / Alpha Encounter (every 10th wave, e.g. 10, 20, 30...)
+    const isBossWave = this.waveNumber > 0 && this.waveNumber % 10 === 0;
 
     // Fetch realistic encounters for this city
     const possibleEncounters = getCityEncounters(
@@ -319,8 +327,9 @@ export class GameStateManager {
       roll -= enc.weight;
     }
 
-    const wildLevel = chosenEncounter.minLvl + Math.floor(Math.random() * (chosenEncounter.maxLvl - chosenEncounter.minLvl + 1));
-    const tier: PrismaticTier = forceSupernova ? 'Supernova' : undefined as any;
+    const baseLevel = chosenEncounter.minLvl + Math.floor(Math.random() * (chosenEncounter.maxLvl - chosenEncounter.minLvl + 1));
+    const wildLevel = isBossWave ? baseLevel + 4 : baseLevel;
+    const tier: PrismaticTier = forceSupernova ? 'Supernova' : (isBossWave && Math.random() < 0.25 ? 'Radiant' : undefined as any);
 
     const wildPokemon = createPokemonInstanceByDex(
       chosenEncounter.dex,
@@ -328,6 +337,14 @@ export class GameStateManager {
       tier,
       this.buddyData.passiveTree.prismaticResonanceTier
     );
+
+    // If Boss Wave, mark as Alpha with 2.2x Max HP
+    if (isBossWave) {
+      wildPokemon.isAlpha = true;
+      wildPokemon.stats.maxHp = Math.floor(wildPokemon.stats.maxHp * 2.2);
+      wildPokemon.stats.hp = wildPokemon.stats.maxHp;
+      wildPokemon.stats.atk = Math.floor(wildPokemon.stats.atk * 1.3);
+    }
 
     this.wildCombatant = {
       pokemon: wildPokemon,
@@ -346,7 +363,9 @@ export class GameStateManager {
       lastAttackTimestamp: performance.now(),
     };
 
-    if (wildPokemon.prismaticTier !== 'Standard') {
+    if (isBossWave) {
+      this.addLog(`⚠️ WARNING: A gigantic Alpha Boss ${wildPokemon.speciesName} (Lv. ${wildPokemon.level}) has appeared!`, 'prismatic');
+    } else if (wildPokemon.prismaticTier !== 'Standard') {
       this.addLog(
         `A rare ${wildPokemon.prismaticTier} ${wildPokemon.speciesName} (Lv. ${wildPokemon.level}) appeared!`,
         'prismatic'
@@ -494,6 +513,11 @@ export class GameStateManager {
         this.prismaticShards += shardsAward;
       }
 
+      // Check PokéRogue Item Pick (Trigger every 5 waves or after an Alpha Boss battle)
+      if (this.waveNumber % 5 === 0) {
+        this.currentRogueRewardOptions = generateRogueRewardBatch(this.waveNumber);
+      }
+
       // 1.8s respawn cooldown
       this.wildCombatant = null;
       this.wildRespawnCooldownRemaining = 1.8;
@@ -595,6 +619,17 @@ export class GameStateManager {
       // Trigger 1.8s cooldown
       this.wildCombatant = null;
       this.wildRespawnCooldownRemaining = 1.8;
+
+      // Check PokéRogue Item Pick on catch as well (every 5 waves)
+      this.waveNumber++;
+      const currentGym = this.getCurrentGymLeader();
+      if (currentGym) {
+        this.cityWavesBeaten[currentGym.id] = (this.cityWavesBeaten[currentGym.id] || 0) + 1;
+      }
+      if (this.waveNumber % 5 === 0) {
+        this.currentRogueRewardOptions = generateRogueRewardBatch(this.waveNumber);
+      }
+
       this.saveGame();
     } else {
       this.addLog(`The wild ${enemy.pokemon.speciesName} broke free!`, 'level');
@@ -632,6 +667,12 @@ export class GameStateManager {
     this.notify();
   }
 
+  public dismissRogueReward() {
+    this.currentRogueRewardOptions = null;
+    this.saveGame();
+    this.notify();
+  }
+
   // Gym Leaders only challengeable after wave requirement is met
   public canChallengeGymLeader(gym: GymLeader): boolean {
     const wavesBeaten = this.cityWavesBeaten[gym.id] || 0;
@@ -658,11 +699,17 @@ export class GameStateManager {
       leaderMaxHp: leaderMaxHp,
       playerCurrentHp: playerFirst.stats.hp,
       playerMaxHp: playerFirst.stats.maxHp,
-      turnPhase: 'player_choose',
+      turnPhase: 'intro',
       battleDialog: `Leader ${gym.name}: "I am ${gym.name}, the Gym Leader of ${gym.cityName}! Show me the bond with your Pokémon!" Leader ${gym.name} sent out ${leaderFirst.name}!`,
       isCompleted: false,
     };
 
+    this.notify();
+  }
+
+  public advanceGymIntro() {
+    if (!this.activeGymBattle || this.activeGymBattle.turnPhase !== 'intro') return;
+    this.activeGymBattle.turnPhase = 'player_choose';
     this.notify();
   }
 

@@ -75,6 +75,7 @@ export interface PokemonData {
   rarityTier: 'Common' | 'Uncommon' | 'Rare' | 'Legendary';
   isFainted?: boolean;
   faintedUntilTimestamp?: number;
+  isAlpha?: boolean;
 }
 
 export interface Active1v1Combatant {
@@ -175,7 +176,18 @@ export interface GymBattleSession {
   leaderMaxHp: number;
   playerCurrentHp: number;
   playerMaxHp: number;
-  turnPhase: 'player_choose' | 'player_attack' | 'leader_attack' | 'victory' | 'defeat';
+  turnPhase: 'intro' | 'player_choose' | 'player_attack' | 'leader_attack' | 'victory' | 'defeat';
   battleDialog: string;
   isCompleted: boolean;
+}
+
+// PokéRogue-Style Item Pick Rewards
+export interface RogueRewardOption {
+  id: string;
+  name: string;
+  category: 'orbs' | 'potions' | 'candy' | 'stat_booster' | 'money' | 'shards';
+  description: string;
+  icon: string;
+  rarity: 'Common' | 'Great' | 'Ultra' | 'Master';
+  applyReward: (state: any) => void;
 }

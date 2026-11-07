@@ -131,7 +131,7 @@ export const CanvasViewport: React.FC<CanvasViewportProps> = ({ state }) => {
           </div>
 
           <div className="flex items-center gap-1.5 bg-slate-950/85 backdrop-blur-md px-3.5 py-2 rounded-xl border border-amber-500/30 text-xs font-mono font-bold shadow-lg">
-            <span className="text-amber-400">💎</span>
+            <img src={ASSET_ICONS.prismaticShard} alt="Shards" className="w-3.5 h-3.5 object-contain inline" />
             <span className="text-amber-300">{state.prismaticShards.toLocaleString()}</span>
           </div>
         </div>

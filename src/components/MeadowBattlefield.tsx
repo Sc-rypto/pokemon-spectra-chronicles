@@ -198,10 +198,17 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
             }}
           >
             {/* Overhead Wild Info Card */}
-            <div className="bg-slate-950/90 backdrop-blur-xl p-2.5 rounded-2xl border border-slate-800 shadow-2xl mb-2 min-w-[180px]">
+            <div className={`bg-slate-950/90 backdrop-blur-xl p-2.5 rounded-2xl border shadow-2xl mb-2 min-w-[180px] ${
+              wild.pokemon.isAlpha ? 'border-red-500/80 ring-2 ring-red-500/40' : 'border-slate-800'
+            }`}>
               <div className="flex items-center justify-between text-xs mb-1">
-                <span className={`font-extrabold truncate max-w-[110px] ${wild.pokemon.prismaticTier !== 'Standard' ? 'text-amber-400' : 'text-white'}`}>
-                  {wild.pokemon.speciesName}
+                <span className={`font-extrabold truncate max-w-[110px] flex items-center gap-1 ${
+                  wild.pokemon.isAlpha ? 'text-red-400' : wild.pokemon.prismaticTier !== 'Standard' ? 'text-amber-400' : 'text-white'
+                }`}>
+                  {wild.pokemon.isAlpha && (
+                    <span className="text-[9px] bg-red-600 text-white font-black px-1 rounded uppercase">ALPHA</span>
+                  )}
+                  <span>{wild.pokemon.speciesName}</span>
                 </span>
                 <span className="font-mono text-amber-400 font-bold text-[11px]">Lv.{wild.pokemon.level}</span>
               </div>
@@ -209,7 +216,9 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
               {/* Wild HP Bar */}
               <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
                 <div
-                  className={`h-full transition-all duration-300 rounded-full ${wild.currentHp <= wild.maxHp * 0.25 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                  className={`h-full transition-all duration-300 rounded-full ${
+                    wild.pokemon.isAlpha ? 'bg-red-500' : wild.currentHp <= wild.maxHp * 0.25 ? 'bg-amber-500' : 'bg-rose-500'
+                  }`}
                   style={{ width: `${Math.max(0, (wild.currentHp / wild.maxHp) * 100)}%` }}
                 />
               </div>
@@ -230,26 +239,36 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
               </div>
             </div>
 
-            {/* Natural Wild Sprite with Ground Shadow */}
+            {/* Natural Wild Sprite with Ground Shadow (Alpha has larger size + red aura) */}
             <div className="flex flex-col items-center">
-              <div className={`relative ${wildStyle?.auraClass || ''}`}>
+              <div className={`relative ${wild.pokemon.isAlpha ? 'ring-4 ring-red-500/80 rounded-full animate-pulse shadow-[0_0_24px_rgba(239,68,68,0.7)]' : wildStyle?.auraClass || ''}`}>
                 <img
                   src={wild.pokemon.spriteUrl}
                   alt={wild.pokemon.speciesName}
-                  style={{ filter: wildStyle?.filterStyle || 'none' }}
-                  className="w-28 h-28 md:w-40 md:h-40 object-contain drop-shadow-[0_12px_18px_rgba(0,0,0,0.7)] group-hover:scale-105 transition-transform"
+                  style={{
+                    filter: wild.pokemon.isAlpha
+                      ? 'contrast(1.4) saturate(1.8) drop-shadow(0 0 16px #ef4444)'
+                      : wildStyle?.filterStyle || 'none'
+                  }}
+                  className={`object-contain group-hover:scale-105 transition-transform ${
+                    wild.pokemon.isAlpha ? 'w-36 h-36 md:w-52 md:h-52 drop-shadow-[0_16px_24px_rgba(239,68,68,0.8)]' : 'w-28 h-28 md:w-40 md:h-40 drop-shadow-[0_12px_18px_rgba(0,0,0,0.7)]'
+                  }`}
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = wild.pokemon.artworkUrl;
                   }}
                 />
               </div>
-              <div className="w-20 md:w-28 h-3.5 bg-black/40 rounded-[100%] blur-sm -mt-2" />
+              <div className={`${wild.pokemon.isAlpha ? 'w-28 md:w-40 h-4' : 'w-20 md:w-28 h-3.5'} bg-black/40 rounded-[100%] blur-sm -mt-2`} />
             </div>
 
             {/* Live Catch Odds Indicator */}
-            <div className="mt-2 flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-950/70 text-amber-300 border border-amber-500/40 shadow">
+            <div className={`mt-2 flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow ${
+              wild.pokemon.isAlpha
+                ? 'bg-red-950/90 text-red-300 border border-red-500/60'
+                : 'bg-amber-950/70 text-amber-300 border border-amber-500/40'
+            }`}>
               <Crosshair size={11} />
-              <span>Catch Odds: {catchOdds}% ({wild.pokemon.rarityTier})</span>
+              <span>Catch Odds: {catchOdds}% ({wild.pokemon.isAlpha ? 'Alpha Boss' : wild.pokemon.rarityTier})</span>
             </div>
           </div>
         ) : (

@@ -156,7 +156,17 @@ export const SocialHubTab: React.FC<SocialHubTabProps> = ({ state }) => {
 
                     <div className="text-right">
                       <div className="font-mono font-black text-xs text-emerald-400 mb-1">
-                        {listing.currency === 'dollars' ? `₽${listing.price.toLocaleString()}` : `${listing.price} 💎`}
+                        {listing.currency === 'dollars' ? (
+                          <span className="flex items-center gap-1">
+                            <img src={ASSET_ICONS.currencyCoin} alt="₽" className="w-3.5 h-3.5 object-contain" />
+                            ₽{listing.price.toLocaleString()}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-amber-300">
+                            <img src={ASSET_ICONS.prismaticShard} alt="Shards" className="w-3.5 h-3.5 object-contain" />
+                            {listing.price} Shards
+                          </span>
+                        )}
                       </div>
                       {listing.isPlayerListing ? (
                         <button
@@ -253,7 +263,7 @@ export const SocialHubTab: React.FC<SocialHubTabProps> = ({ state }) => {
                       className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white"
                     >
                       <option value="dollars">Poké-Dollars (₽)</option>
-                      <option value="shards">Prismatic Shards (💎)</option>
+                      <option value="shards">Prismatic Shards</option>
                     </select>
                   </div>
                 </div>

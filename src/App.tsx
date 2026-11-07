@@ -8,6 +8,7 @@ import { ShopTab } from './components/drawers/ShopTab';
 import { SocialHubTab } from './components/drawers/SocialHubTab';
 import { GymBattleView } from './components/drawers/GymBattleView';
 import { StarterSelectionModal } from './components/StarterSelectionModal';
+import { RogueRewardModal } from './components/drawers/RogueRewardModal';
 
 export const App: React.FC = () => {
   const gameState = GameStateManager.getInstance();
@@ -23,6 +24,8 @@ export const App: React.FC = () => {
     return unsubscribe;
   }, []);
 
+  const isGymBattleActive = !!gameState.activeGymBattle;
+
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans flex flex-col">
       {/* 1. ONBOARDING / STARTER SELECTION GREETING MODAL */}
@@ -30,7 +33,12 @@ export const App: React.FC = () => {
         <StarterSelectionModal state={gameState} />
       )}
 
-      {/* 2. CENTRAL VIEWPORT (MEADOW OR DEDICATED APP SCREEN) */}
+      {/* 2. POKÉROGUE-STYLE ITEM PICK REWARD MODAL */}
+      {gameState.currentRogueRewardOptions && !isGymBattleActive && (
+        <RogueRewardModal state={gameState} />
+      )}
+
+      {/* 3. CENTRAL VIEWPORT (MEADOW OR DEDICATED APP SCREEN) */}
       <main className="flex-1 relative overflow-hidden pb-28">
         {activeTab === 'meadow' && <MeadowBattlefield state={gameState} />}
 
@@ -45,17 +53,19 @@ export const App: React.FC = () => {
         )}
 
         {/* AUTHENTIC ANIMATED MAIN-SERIES GYM BATTLE ARENA MODAL */}
-        {gameState.activeGymBattle && (
+        {isGymBattleActive && (
           <GymBattleView state={gameState} />
         )}
       </main>
 
-      {/* 3. FIXED, NON-COLLAPSIBLE PROPERLY-SIZED BOTTOM NAVIGATION BAR */}
-      <BottomDock
-        state={gameState}
-        activeTab={activeTab}
-        onSelectTab={setActiveTab}
-      />
+      {/* 4. FIXED, NON-COLLAPSIBLE PROPERLY-SIZED BOTTOM NAVIGATION BAR (INACCESSIBLE DURING GYM BATTLE) */}
+      {!isGymBattleActive && (
+        <BottomDock
+          state={gameState}
+          activeTab={activeTab}
+          onSelectTab={setActiveTab}
+        />
+      )}
     </div>
   );
 };
