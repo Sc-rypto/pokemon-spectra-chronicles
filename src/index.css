@@ -13,6 +13,35 @@ body, html, #root {
   background-color: #020617;
   color: #f8fafc;
   user-select: none;
+  font-family: 'Silkscreen', 'Press Start 2P', monospace, sans-serif;
+}
+
+/* Authentic Pokémon Retro Font Classes */
+.font-pokemon-pixel {
+  font-family: 'Press Start 2P', monospace;
+}
+
+.font-pokemon-ds {
+  font-family: 'Silkscreen', monospace;
+}
+
+.font-pokemon-dialog {
+  font-family: 'VT323', monospace;
+}
+
+/* Authentic DS / Gen 4 Polka Dot Bag Background Pattern */
+.pokemon-ds-dot-bg {
+  background-color: #f59e0b;
+  background-image: radial-gradient(#d97706 20%, transparent 20%), radial-gradient(#fbbf24 20%, transparent 20%);
+  background-size: 28px 28px;
+  background-position: 0 0, 14px 14px;
+}
+
+.pokemon-ds-dark-dot-bg {
+  background-color: #1e293b;
+  background-image: radial-gradient(#0f172a 20%, transparent 20%), radial-gradient(#334155 20%, transparent 20%);
+  background-size: 24px 24px;
+  background-position: 0 0, 12px 12px;
 }
 
 /* Custom scrollbars for compact drawers */

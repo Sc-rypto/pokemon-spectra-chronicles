@@ -1,14 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { GameStateManager } from '../state/GameStateManager';
 import { REGIONS_DATA, getPrismaticSpriteStyle, calculateTypeMultiplier, ASSET_ICONS, TYPE_PALETTES } from '../data/pokemonCatalog';
 import { getCityBackgroundUrl } from '../data/cityBackgrounds';
-import { Sparkles, AlertTriangle, Crosshair, Shield, HeartPulse, Clock } from 'lucide-react';
+import { Sparkles, AlertTriangle, Crosshair, Shield, HeartPulse, Clock, Sliders } from 'lucide-react';
+import { AutoCatchSettingsModal } from './drawers/AutoCatchSettingsModal';
 
 interface MeadowBattlefieldProps {
   state: GameStateManager;
 }
 
 export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) => {
+  const [showAutoCatchModal, setShowAutoCatchModal] = useState<boolean>(false);
   const currentRegion = REGIONS_DATA[state.currentRegionIndex];
   const currentGym = state.getCurrentGymLeader();
   const player = state.playerCombatant;
@@ -91,8 +93,24 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
           </div>
         )}
 
-        {/* WALLET DISPLAY */}
+        {/* WALLET DISPLAY & AUTO-CATCH SETTINGS BUTTON */}
         <div className="flex items-center gap-2 pointer-events-auto">
+          <button
+            onClick={() => setShowAutoCatchModal(true)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all shadow-md ${
+              state.autoCatchSettings.enabled
+                ? 'bg-indigo-600/40 border-indigo-500 text-indigo-300 hover:bg-indigo-600/60'
+                : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white'
+            }`}
+            title="Configure Tallgrass Auto-Catch Filters"
+          >
+            <Sliders size={14} />
+            <span className="hidden sm:inline">Auto-Catch:</span>
+            <span className={state.autoCatchSettings.enabled ? 'text-emerald-400 font-black' : 'text-slate-500'}>
+              {state.autoCatchSettings.enabled ? 'ON' : 'OFF'}
+            </span>
+          </button>
+
           <div className="flex items-center gap-2 bg-slate-950/90 backdrop-blur-xl px-3.5 py-2 rounded-xl border border-slate-800 text-xs font-mono font-bold shadow-lg">
             <img src={ASSET_ICONS.currencyCoin} alt="₽" className="w-4 h-4 object-contain" />
             <span className="text-white">₽{state.pokeDollars.toLocaleString()}</span>
@@ -375,6 +393,14 @@ export const MeadowBattlefield: React.FC<MeadowBattlefieldProps> = ({ state }) =
           </button>
         </div>
       </div>
+
+      {/* AUTO-CATCH SETTINGS MODAL */}
+      {showAutoCatchModal && (
+        <AutoCatchSettingsModal
+          state={state}
+          onClose={() => setShowAutoCatchModal(false)}
+        />
+      )}
     </div>
   );
 };

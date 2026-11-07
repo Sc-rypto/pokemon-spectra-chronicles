@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { GameStateManager } from '../../state/GameStateManager';
-import { Globe, Swords, Tag, X } from 'lucide-react';
+import { Globe, Swords, Tag, X, Clock, AlertTriangle, Sparkles } from 'lucide-react';
 import { ASSET_ICONS, getPrismaticSpriteStyle } from '../../data/pokemonCatalog';
 
 interface SocialHubTabProps {
@@ -12,9 +12,19 @@ export const SocialHubTab: React.FC<SocialHubTabProps> = ({ state }) => {
   const [listingPrice, setListingPrice] = useState<number>(1000);
   const [listingCurrency, setListingCurrency] = useState<'dollars' | 'shards'>('dollars');
   const [selectedBoxIdx, setSelectedBoxIdx] = useState<number>(0);
+  const [strikeNotice, setStrikeNotice] = useState<{ text: string; isError?: boolean } | null>(null);
 
   const raid = state.activeRaid;
   const raidHpPercent = Math.max(0, (raid.currentHp / raid.maxHp) * 100);
+  const cooldownMs = state.getRaidCooldownRemainingMs();
+  const cooldownMins = Math.ceil(cooldownMs / 60000);
+  const cooldownSecs = Math.floor((cooldownMs % 60000) / 1000);
+
+  const handleStrike = () => {
+    const res = state.strikeRaidBoss();
+    setStrikeNotice({ text: res.message, isError: !res.success });
+    setTimeout(() => setStrikeNotice(null), 3500);
+  };
 
   return (
     <div className="space-y-4">
@@ -77,14 +87,41 @@ export const SocialHubTab: React.FC<SocialHubTabProps> = ({ state }) => {
               </div>
             </div>
 
-            {/* Raid Strike Action */}
-            <button
-              onClick={() => state.strikeRaidBoss()}
-              className="px-6 py-3 bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-xl shadow-red-950/60 transition-all transform active:scale-95 flex items-center gap-2"
-            >
-              <Swords size={18} /> Strike Raid Boss!
-            </button>
+            {/* Raid Strike Action with Anti-Autoclicker 1-Hour Cooldown */}
+            <div className="flex flex-col items-end gap-1.5">
+              <button
+                onClick={handleStrike}
+                disabled={cooldownMs > 0}
+                className={`px-6 py-3 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-xl transition-all flex items-center gap-2 ${
+                  cooldownMs > 0
+                    ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-75'
+                    : 'bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-500 hover:to-amber-500 shadow-red-950/60 transform active:scale-95 cursor-pointer'
+                }`}
+              >
+                {cooldownMs > 0 ? <Clock size={16} /> : <Swords size={18} />}
+                <span>
+                  {cooldownMs > 0
+                    ? `Resting (${cooldownMins}m ${cooldownSecs}s)`
+                    : 'Strike Raid Boss!'}
+                </span>
+              </button>
+
+              {cooldownMs > 0 && (
+                <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                  <AlertTriangle size={10} className="text-amber-400" />
+                  <span>1 attack per 1 hour (Cooldown active)</span>
+                </div>
+              )}
+            </div>
           </div>
+
+          {strikeNotice && (
+            <div className={`p-2.5 rounded-xl border text-xs font-bold ${
+              strikeNotice.isError ? 'bg-rose-950/90 text-rose-300 border-rose-500/50' : 'bg-emerald-950/90 text-emerald-300 border-emerald-500/50'
+            }`}>
+              {strikeNotice.text}
+            </div>
+          )}
 
           {/* Real-time Health Bar */}
           <div>

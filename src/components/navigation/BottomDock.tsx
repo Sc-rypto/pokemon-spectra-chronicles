@@ -1,9 +1,9 @@
 import React from 'react';
 import { GameStateManager } from '../../state/GameStateManager';
-import { Swords, Users, Map, ShoppingBag, Shield } from 'lucide-react';
+import { Swords, Users, Map, ShoppingBag, Shield, Backpack } from 'lucide-react';
 import { ASSET_ICONS, getPrismaticSpriteStyle } from '../../data/pokemonCatalog';
 
-export type TabKey = 'meadow' | 'team' | 'world' | 'shop' | 'raid';
+export type TabKey = 'meadow' | 'team' | 'bag' | 'world' | 'shop' | 'raid';
 
 interface BottomDockProps {
   state: GameStateManager;
@@ -72,65 +72,77 @@ export const BottomDock: React.FC<BottomDockProps> = ({
         </div>
 
         {/* PRIMARY FIXED APP NAVIGATION TABS */}
-        <div className="grid grid-cols-5 gap-1.5 text-center">
+        <div className="grid grid-cols-6 gap-1.5 text-center font-pokemon-ds">
           <button
             onClick={() => onSelectTab('meadow')}
-            className={`flex flex-col items-center justify-center py-1.5 px-2 rounded-xl transition-all ${
+            className={`flex flex-col items-center justify-center py-1.5 px-1.5 rounded-xl transition-all ${
               activeTab === 'meadow'
                 ? 'bg-emerald-600/30 border border-emerald-500 text-emerald-400 font-bold'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
             }`}
           >
-            <Swords size={18} />
-            <span className="text-[11px] font-semibold mt-0.5">Meadow</span>
+            <Swords size={17} />
+            <span className="text-[10px] font-semibold mt-0.5">Meadow</span>
           </button>
 
           <button
             onClick={() => onSelectTab('team')}
-            className={`flex flex-col items-center justify-center py-1.5 px-2 rounded-xl transition-all ${
+            className={`flex flex-col items-center justify-center py-1.5 px-1.5 rounded-xl transition-all ${
               activeTab === 'team'
                 ? 'bg-indigo-600/30 border border-indigo-500 text-indigo-400 font-bold'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
             }`}
           >
-            <Users size={18} />
-            <span className="text-[11px] font-semibold mt-0.5">Team & Box</span>
+            <Users size={17} />
+            <span className="text-[10px] font-semibold mt-0.5">Party & PC</span>
+          </button>
+
+          <button
+            onClick={() => onSelectTab('bag')}
+            className={`flex flex-col items-center justify-center py-1.5 px-1.5 rounded-xl transition-all ${
+              activeTab === 'bag'
+                ? 'bg-amber-600/30 border border-amber-500 text-amber-400 font-bold'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+            }`}
+          >
+            <Backpack size={17} />
+            <span className="text-[10px] font-semibold mt-0.5">Bag</span>
           </button>
 
           <button
             onClick={() => onSelectTab('world')}
-            className={`flex flex-col items-center justify-center py-1.5 px-2 rounded-xl transition-all ${
+            className={`flex flex-col items-center justify-center py-1.5 px-1.5 rounded-xl transition-all ${
               activeTab === 'world'
                 ? 'bg-cyan-600/30 border border-cyan-500 text-cyan-400 font-bold'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
             }`}
           >
-            <Map size={18} />
-            <span className="text-[11px] font-semibold mt-0.5">World</span>
+            <Map size={17} />
+            <span className="text-[10px] font-semibold mt-0.5">World</span>
           </button>
 
           <button
             onClick={() => onSelectTab('shop')}
-            className={`flex flex-col items-center justify-center py-1.5 px-2 rounded-xl transition-all ${
+            className={`flex flex-col items-center justify-center py-1.5 px-1.5 rounded-xl transition-all ${
               activeTab === 'shop'
-                ? 'bg-amber-600/30 border border-amber-500 text-amber-400 font-bold'
+                ? 'bg-purple-600/30 border border-purple-500 text-purple-400 font-bold'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
             }`}
           >
-            <ShoppingBag size={18} />
-            <span className="text-[11px] font-semibold mt-0.5">PokéMart</span>
+            <ShoppingBag size={17} />
+            <span className="text-[10px] font-semibold mt-0.5">PokéMart</span>
           </button>
 
           <button
             onClick={() => onSelectTab('raid')}
-            className={`flex flex-col items-center justify-center py-1.5 px-2 rounded-xl transition-all ${
+            className={`flex flex-col items-center justify-center py-1.5 px-1.5 rounded-xl transition-all ${
               activeTab === 'raid'
                 ? 'bg-red-600/30 border border-red-500 text-red-400 font-bold'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
             }`}
           >
-            <Shield size={18} />
-            <span className="text-[11px] font-semibold mt-0.5">Raid & Market</span>
+            <Shield size={17} />
+            <span className="text-[10px] font-semibold mt-0.5">Raid Boss</span>
           </button>
         </div>
       </div>

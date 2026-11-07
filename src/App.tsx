@@ -5,6 +5,7 @@ import { BottomDock, TabKey } from './components/navigation/BottomDock';
 import { SquadBuddyTab } from './components/drawers/SquadBuddyTab';
 import { WorldTab } from './components/drawers/WorldTab';
 import { ShopTab } from './components/drawers/ShopTab';
+import { BagTab } from './components/drawers/BagTab';
 import { SocialHubTab } from './components/drawers/SocialHubTab';
 import { GymBattleView } from './components/drawers/GymBattleView';
 import { StarterSelectionModal } from './components/StarterSelectionModal';
@@ -46,6 +47,7 @@ export const App: React.FC = () => {
         {activeTab !== 'meadow' && (
           <div className="h-full overflow-y-auto p-4 md:p-6 max-w-4xl mx-auto custom-scrollbar">
             {activeTab === 'team' && <SquadBuddyTab state={gameState} />}
+            {activeTab === 'bag' && <BagTab state={gameState} />}
             {activeTab === 'world' && <WorldTab state={gameState} />}
             {activeTab === 'shop' && <ShopTab state={gameState} />}
             {activeTab === 'raid' && <SocialHubTab state={gameState} />}

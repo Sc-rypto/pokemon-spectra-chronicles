@@ -131,13 +131,17 @@ export interface RegionInfo {
 export interface InventoryItem {
   id: string;
   name: string;
-  category: 'balls' | 'potions' | 'held' | 'materials' | 'orbs';
+  category: 'balls' | 'potions' | 'held' | 'materials' | 'orbs' | 'candies' | 'stones';
+  pocket?: 'items' | 'medicine' | 'balls' | 'berries';
   count: number;
   price: number;
   shardPrice?: number;
   description: string;
   icon: string;
   catchMultiplier?: number;
+  usableOnPokemon?: boolean;
+  effectType?: 'heal_hp' | 'revive' | 'full_heal' | 'rare_candy' | 'exp_candy' | 'evolution';
+  effectValue?: number;
 }
 
 export interface MarketListing {
@@ -190,4 +194,26 @@ export interface RogueRewardOption {
   icon: string;
   rarity: 'Common' | 'Great' | 'Ultra' | 'Master';
   applyReward: (state: any) => void;
+}
+
+export interface AutoCatchSettings {
+  enabled: boolean;
+  targetPrismaticOnly: boolean;
+  minTierToThrow: PrismaticTier;
+  catchUnregistered: boolean;
+  autoFaintStandardDuplicates: boolean;
+  preferredBall: string;
+  hpThresholdPercent: number; // Only throw when wild HP <= this percentage
+  whitelistedTiers: Record<PrismaticTier, boolean>;
+}
+
+export interface BuddyData {
+  pokemonId: string;
+  affectionLevel: number;
+  passiveTree: {
+    prismaticResonanceTier: number;
+    autoDowsingTier: number;
+    hasteAuraTier: number;
+    goldHoarderTier: number;
+  };
 }

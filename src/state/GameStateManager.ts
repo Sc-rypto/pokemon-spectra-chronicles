@@ -18,6 +18,7 @@ import {
   calculatePokemonStats,
   getPokemonSpriteUrls,
   calculateTypeMultiplier,
+  getMovesForTypeAndLevel,
   ASSET_ICONS,
 } from '../data/pokemonCatalog';
 import { TALLGRASS_SHOP_CATALOG } from '../data/tallgrassItems';
@@ -77,14 +78,22 @@ export class GameStateManager {
     },
   };
 
-  // Auto-Catch Settings
+  // Auto-Catch Settings (Tallgrass inspired)
   public autoCatchSettings: AutoCatchSettings = {
     enabled: true,
     targetPrismaticOnly: false,
     minTierToThrow: 'Standard',
     catchUnregistered: true,
     autoFaintStandardDuplicates: false,
-    preferredBall: 'poke',
+    preferredBall: 'b1',
+    hpThresholdPercent: 40,
+    whitelistedTiers: {
+      Standard: true,
+      Shiny: true,
+      Radiant: true,
+      Ethereal: true,
+      Supernova: true,
+    },
   };
 
   // Tallgrass Inventory
@@ -93,7 +102,10 @@ export class GameStateManager {
   // Global Player Marketplace
   public marketListings: MarketListing[] = [];
 
-  // Playable Overworld Raid Boss
+  // Playable Overworld Raid Boss with 1-hour anti-autoclicker cooldown
+  public lastRaidStrikeTimestamp: number = 0;
+  public readonly RAID_COOLDOWN_MS: number = 60 * 60 * 1000; // 1 hour cooldown
+
   public activeRaid: RaidBossState = {
     id: 'raid_alpha_mewtwo',
     name: 'Prismatic Rift Mega-Mewtwo',
@@ -156,12 +168,23 @@ export class GameStateManager {
           this.hasCompletedOnboarding = true;
           this.squad = parsed.squad;
           this.pcBox = parsed.pcBox || [];
-          this.pokeDollars = parsed.pokeDollars || 1000;
-          this.prismaticShards = parsed.prismaticShards || 50;
+          this.pokeDollars = parsed.pokeDollars !== undefined ? parsed.pokeDollars : 1000;
+          this.prismaticShards = parsed.prismaticShards !== undefined ? parsed.prismaticShards : 50;
           this.currentRegionIndex = parsed.currentRegionIndex || 0;
           this.currentCityIndex = parsed.currentCityIndex || 0;
           this.cityWavesBeaten = parsed.cityWavesBeaten || {};
           this.pokedexCaught = new Set(parsed.pokedexCaught || [this.squad[0].dexNumber]);
+          this.lastRaidStrikeTimestamp = parsed.lastRaidStrikeTimestamp || 0;
+          if (parsed.inventory && Array.isArray(parsed.inventory)) {
+            // merge counts into catalog
+            parsed.inventory.forEach((savedItm: any) => {
+              const matched = this.inventory.find(i => i.id === savedItm.id);
+              if (matched) matched.count = savedItm.count;
+            });
+          }
+          if (parsed.autoCatchSettings) {
+            this.autoCatchSettings = { ...this.autoCatchSettings, ...parsed.autoCatchSettings };
+          }
           this.init1v1Combatants();
           return;
         }
@@ -178,7 +201,7 @@ export class GameStateManager {
     this.trainerName = chosenName;
     this.hasCompletedOnboarding = true;
 
-    // Start with ONLY 1 Starter Pokemon at Lv. 5
+    // Start with ONLY 1 Starter Pokemon at Lv. 5 with level-appropriate moves
     const starter = createPokemonInstanceByDex(starterDex, 5);
     this.squad = [starter];
     this.activeBattlerSlot = 0;
@@ -208,6 +231,9 @@ export class GameStateManager {
         currentCityIndex: this.currentCityIndex,
         cityWavesBeaten: this.cityWavesBeaten,
         pokedexCaught: Array.from(this.pokedexCaught),
+        lastRaidStrikeTimestamp: this.lastRaidStrikeTimestamp,
+        inventory: this.inventory.map(i => ({ id: i.id, count: i.count })),
+        autoCatchSettings: this.autoCatchSettings,
       };
       localStorage.setItem('spectra_save_v1', JSON.stringify(payload));
     } catch {
@@ -481,19 +507,31 @@ export class GameStateManager {
       this.wildCombatant.attackCooldowns['default'] = Math.max(0, wCd - delta);
     }
 
-    // 4. Auto-catch check
+    // 4. Auto-catch check (inspired by Tallgrass with rarity filters, target unregistered & preferred ball)
     if (this.autoCatchSettings.enabled && this.wildCombatant.currentHp > 0) {
-      const isPrismatic = this.wildCombatant.pokemon.prismaticTier !== 'Standard';
-      const isUnreg = !this.pokedexCaught.has(this.wildCombatant.pokemon.dexNumber);
-      const lowHp = this.wildCombatant.currentHp < this.wildCombatant.maxHp * 0.35;
+      const wildPkmn = this.wildCombatant.pokemon;
+      const isUnreg = !this.pokedexCaught.has(wildPkmn.dexNumber);
+      const hpPercent = (this.wildCombatant.currentHp / this.wildCombatant.maxHp) * 100;
+      const meetsHpThreshold = hpPercent <= (this.autoCatchSettings.hpThresholdPercent || 50);
 
-      const shouldThrow =
-        isPrismatic ||
-        (this.autoCatchSettings.catchUnregistered && isUnreg) ||
-        (!this.autoCatchSettings.targetPrismaticOnly && lowHp);
+      // Check rarity whitelist filter
+      const isTierAllowed = this.autoCatchSettings.whitelistedTiers?.[wildPkmn.prismaticTier] ?? true;
 
-      if (shouldThrow && Math.random() < 0.12) {
-        this.attemptCatch(this.wildCombatant);
+      let shouldThrow = false;
+
+      if (isTierAllowed && meetsHpThreshold) {
+        if (this.autoCatchSettings.catchUnregistered && isUnreg) {
+          shouldThrow = true;
+        } else if (this.autoCatchSettings.targetPrismaticOnly) {
+          shouldThrow = wildPkmn.prismaticTier !== 'Standard';
+        } else {
+          shouldThrow = true;
+        }
+      }
+
+      if (shouldThrow && Math.random() < 0.15) {
+        const preferredBallItem = this.inventory.find(i => i.id === this.autoCatchSettings.preferredBall && i.count > 0);
+        this.attemptCatch(this.wildCombatant, preferredBallItem);
       }
     }
 
@@ -645,26 +683,188 @@ export class GameStateManager {
       return;
     }
 
+    // Ensure expToNextLevel is valid
+    if (!pokemon.expToNextLevel || pokemon.expToNextLevel <= 0) {
+      pokemon.expToNextLevel = Math.max(100, Math.floor((pokemon.level ** 2) * 20));
+    }
+
     pokemon.currentExp += expAmount;
+    let leveledUp = false;
+
     while (pokemon.currentExp >= pokemon.expToNextLevel && pokemon.level < cap) {
       pokemon.currentExp -= pokemon.expToNextLevel;
       pokemon.level++;
-      // Realistic Medium-Fast Exp Curve (level^3 / 1.2)
+      leveledUp = true;
       pokemon.expToNextLevel = Math.floor((pokemon.level ** 2) * 20);
       pokemon.stats = calculatePokemonStats(pokemon.baseStats, pokemon.ivs, pokemon.evs, pokemon.level);
+
+      // Learn new level-appropriate moves if applicable
+      pokemon.moves = getMovesForTypeAndLevel(pokemon.types[0], pokemon.level);
 
       if (this.playerCombatant && this.playerCombatant.pokemon.id === pokemon.id) {
         this.playerCombatant.maxHp = pokemon.stats.maxHp;
         this.playerCombatant.currentHp = pokemon.stats.maxHp;
+        this.playerCombatant.pokemon = pokemon;
       }
 
-      this.addLog(`${pokemon.speciesName} grew to Lv. ${pokemon.level}!`, 'level');
+      this.addLog(`🎉 ${pokemon.speciesName} grew to Lv. ${pokemon.level}!`, 'level');
     }
 
     if (pokemon.level >= cap) {
       pokemon.currentExp = 0;
     }
+
+    if (leveledUp) {
+      this.saveGame();
+    }
     this.notify();
+  }
+
+  // Use Item on Party Pokémon (Potions, Revives, Candies, Evolution Stones)
+  public useItemOnPokemon(itemId: string, pokemonId: string): { success: boolean; message: string } {
+    const item = this.inventory.find(i => i.id === itemId);
+    if (!item || item.count <= 0) {
+      return { success: false, message: 'You do not have any of this item!' };
+    }
+
+    const target = this.squad.find(p => p.id === pokemonId);
+    if (!target) {
+      return { success: false, message: 'Selected Pokémon is not in your party!' };
+    }
+
+    const isActive = this.playerCombatant && this.playerCombatant.pokemon.id === target.id;
+
+    if (item.effectType === 'heal_hp') {
+      if (target.isFainted) {
+        return { success: false, message: `${target.speciesName} is fainted! Use a Revive or Revival Herb first.` };
+      }
+      if (target.stats.hp >= target.stats.maxHp) {
+        return { success: false, message: `${target.speciesName}'s HP is already full!` };
+      }
+      const healAmount = item.effectValue || 100;
+      target.stats.hp = Math.min(target.stats.maxHp, target.stats.hp + healAmount);
+      if (isActive && this.playerCombatant) {
+        this.playerCombatant.currentHp = target.stats.hp;
+      }
+      item.count--;
+      this.addLog(`Used ${item.name} on ${target.speciesName}! Restored ${healAmount} HP.`, 'level');
+      this.saveGame();
+      this.notify();
+      return { success: true, message: `Restored ${healAmount} HP to ${target.speciesName}!` };
+    }
+
+    if (item.effectType === 'full_heal') {
+      if (target.isFainted) {
+        return { success: false, message: `${target.speciesName} is fainted! Use a Revive first.` };
+      }
+      if (target.stats.hp >= target.stats.maxHp) {
+        return { success: false, message: `${target.speciesName}'s HP is already full!` };
+      }
+      target.stats.hp = target.stats.maxHp;
+      if (isActive && this.playerCombatant) {
+        this.playerCombatant.currentHp = target.stats.hp;
+      }
+      item.count--;
+      this.addLog(`Used ${item.name} on ${target.speciesName}! HP fully restored!`, 'level');
+      this.saveGame();
+      this.notify();
+      return { success: true, message: `${target.speciesName}'s HP was fully restored!` };
+    }
+
+    if (item.effectType === 'revive') {
+      if (!target.isFainted && target.stats.hp > 0) {
+        return { success: false, message: `${target.speciesName} is not fainted!` };
+      }
+      target.isFainted = false;
+      target.faintedUntilTimestamp = undefined;
+      const revivedHp = Math.floor(target.stats.maxHp * 0.5);
+      target.stats.hp = Math.max(1, revivedHp);
+      if (isActive && this.playerCombatant) {
+        this.playerCombatant.currentHp = target.stats.hp;
+      }
+      item.count--;
+      this.addLog(`Used ${item.name} on ${target.speciesName}! Revived with ${target.stats.hp} HP!`, 'level');
+      this.saveGame();
+      this.notify();
+      return { success: true, message: `${target.speciesName} was revived with half HP!` };
+    }
+
+    if (item.effectType === 'rare_candy') {
+      const cap = this.getHardLevelCap();
+      if (target.level >= cap) {
+        return { success: false, message: `${target.speciesName} cannot exceed the current Gym Leader cap of Lv. ${cap}!` };
+      }
+      item.count--;
+      target.level++;
+      target.currentExp = 0;
+      target.expToNextLevel = Math.floor((target.level ** 2) * 20);
+      target.stats = calculatePokemonStats(target.baseStats, target.ivs, target.evs, target.level);
+      target.moves = getMovesForTypeAndLevel(target.types[0], target.level);
+      if (isActive && this.playerCombatant) {
+        this.playerCombatant.maxHp = target.stats.maxHp;
+        this.playerCombatant.currentHp = target.stats.maxHp;
+        this.playerCombatant.pokemon = target;
+      }
+      this.addLog(`Used Rare Candy! ${target.speciesName} elevated to Lv. ${target.level}!`, 'prismatic');
+      this.saveGame();
+      this.notify();
+      return { success: true, message: `${target.speciesName} elevated to Lv. ${target.level}!` };
+    }
+
+    if (item.effectType === 'exp_candy') {
+      const expBoost = item.effectValue || 10000;
+      item.count--;
+      this.gainExp(target, expBoost);
+      this.addLog(`Fed ${item.name} to ${target.speciesName}! (+${expBoost.toLocaleString()} EXP)`, 'level');
+      this.saveGame();
+      this.notify();
+      return { success: true, message: `Gave +${expBoost.toLocaleString()} EXP to ${target.speciesName}!` };
+    }
+
+    if (item.effectType === 'evolution') {
+      // Stone used on compatible pokemon gives permanent stat resonance
+      item.count--;
+      target.stats.atk += 8;
+      target.stats.def += 8;
+      target.stats.spa += 8;
+      target.stats.spd += 8;
+      target.stats.maxHp += 15;
+      target.stats.hp = Math.min(target.stats.maxHp, target.stats.hp + 15);
+      this.addLog(`${target.speciesName} resonated with the ${item.name}! All battle stats increased!`, 'prismatic');
+      this.saveGame();
+      this.notify();
+      return { success: true, message: `${target.speciesName} absorbed the ${item.name}'s power! Stats boosted!` };
+    }
+
+    return { success: false, message: 'This item cannot be used on this Pokémon right now.' };
+  }
+
+  // PokéMart buying mechanics
+  public buyItem(itemId: string, useShards: boolean = false): { success: boolean; message: string } {
+    const item = this.inventory.find(i => i.id === itemId);
+    if (!item) return { success: false, message: 'Item not found in PokéMart catalog!' };
+
+    if (useShards) {
+      const shardCost = item.shardPrice || 0;
+      if (shardCost <= 0) return { success: false, message: 'This item is not sold for Prismatic Shards!' };
+      if (this.prismaticShards < shardCost) {
+        return { success: false, message: 'Not enough Prismatic Shards!' };
+      }
+      this.prismaticShards -= shardCost;
+      item.count++;
+      this.saveGame();
+      this.notify();
+      return { success: true, message: `Purchased 1x ${item.name} for ${shardCost} Shards!` };
+    } else {
+      if (this.pokeDollars < item.price) {
+        return { success: false, message: 'Not enough Poké-Dollars!' };
+      }
+      this.pokeDollars -= item.price;
+      item.count++;
+      this.saveGame();
+      this.notify();
+      return { success: true, message: `Purchased 1x ${item.name} for ₽${item.price.toLocaleString()}!` };
+    }
   }
 
   public dismissRogueReward() {
@@ -867,23 +1067,36 @@ export class GameStateManager {
     this.notify();
   }
 
-  public strikeRaidBoss() {
-    if (!this.activeRaid.active) return;
+  public getRaidCooldownRemainingMs(): number {
+    const elapsed = Date.now() - this.lastRaidStrikeTimestamp;
+    return Math.max(0, this.RAID_COOLDOWN_MS - elapsed);
+  }
+
+  public strikeRaidBoss(): { success: boolean; message: string } {
+    if (!this.activeRaid.active) return { success: false, message: 'No active raid.' };
+
+    const remainingMs = this.getRaidCooldownRemainingMs();
+    if (remainingMs > 0) {
+      const mins = Math.ceil(remainingMs / 60000);
+      return { success: false, message: `Raid energy depleted! Must rest for ${mins} more minutes before attacking again.` };
+    }
+
+    this.lastRaidStrikeTimestamp = Date.now();
     const playerAtk = this.squad.reduce((sum, p) => sum + p.stats.atk, 0);
-    const dmg = Math.floor(playerAtk * (2.2 + Math.random() * 0.6));
+    const dmg = Math.floor(playerAtk * (4.5 + Math.random() * 1.5));
 
     this.activeRaid.currentHp = Math.max(0, this.activeRaid.currentHp - dmg);
     this.activeRaid.totalDamageDealt += dmg;
 
-    const goldEarned = Math.floor(dmg * 0.15);
-    const shardsEarned = Math.floor(dmg * 0.005);
+    const goldEarned = Math.floor(dmg * 0.5);
+    const shardsEarned = Math.floor(dmg * 0.02) + 5;
     this.pokeDollars += goldEarned;
     this.prismaticShards += shardsEarned;
 
-    this.addLog(`Struck Raid Boss for ${dmg.toLocaleString()} DMG! Earned ₽${goldEarned} and ${shardsEarned} Shards.`, 'damage');
+    this.addLog(`⚡ Raid Battle: Unleashed team assault for ${dmg.toLocaleString()} DMG! Earned ₽${goldEarned.toLocaleString()} and +${shardsEarned} Shards!`, 'damage');
 
     if (this.activeRaid.currentHp <= 0) {
-      this.addLog(`Defeated ${this.activeRaid.name}! Awarded +5,000 Shards!`, 'prismatic');
+      this.addLog(`👑 Legendary Defeat: Overthrew ${this.activeRaid.name}! Awarded +5,000 Shards & ₽50,000!`, 'prismatic');
       this.prismaticShards += 5000;
       this.pokeDollars += 50000;
       this.activeRaid.currentHp = this.activeRaid.maxHp;
@@ -891,6 +1104,7 @@ export class GameStateManager {
 
     this.saveGame();
     this.notify();
+    return { success: true, message: `Dealt ${dmg.toLocaleString()} DMG! Raid attack cooling down for 1 hour.` };
   }
 
   public addLog(message: string, type: CombatLogEntry['type']) {
